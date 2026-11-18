@@ -49,6 +49,9 @@
         },
         "pout": {
           ".write": "auth != null && root.child('staff').child(root.child('uids').child(auth.uid).val()+'').child('active').val() === true && data.parent().child('userId').val() === root.child('uids').child(auth.uid).val() && !data.exists() && newData.val() === true"
+        },
+        "outGeo": {
+          ".write": "auth != null && root.child('staff').child(root.child('uids').child(auth.uid).val()+'').child('active').val() === true && data.parent().child('userId').val() === root.child('uids').child(auth.uid).val() && !data.exists() && newData.hasChildren(['lat', 'lng'])"
         }
       }
     },

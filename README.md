@@ -23,6 +23,7 @@ App chấm công bằng ảnh cho lao động thời vụ / sinh viên làm thê
 - **Tính theo phút thực tế**, lấy phút đồng hồ lúc chụp: vào 14:45, ra 17:12 → **2h27** → 147 × 35.000 / 60 = **85.750đ**.
 - **Giờ chốt ra ca**: Ca 1 chỉ tính công tới **14:00**, Ca 2 tới **22:00**. Ra trễ hơn giờ chốt thì chỉ tính tới giờ chốt; ra sớm hơn thì tính theo thực tế. App vẫn lưu giờ ra thật, bảng lương đánh dấu `*` ở các ca bị chốt.
 - **Phân ca**: check in trước 12:00 là Ca 1, từ 12:00 trở đi là Ca 2.
+- **Định vị**: mỗi lần check in / check out app lấy GPS. Ở ngoài khu Terracotta (mặc định bán kính 500 m quanh 11.8949, 108.4381) thì không cho chấm công, hoặc chỉ đánh dấu đỏ tuỳ Cài đặt. Admin thấy vị trí từng ca, bấm mở Google Maps.
 - **Ngoại lệ**: admin mở ca → Sửa → tick "Duyệt tính công quá giờ chốt" (bắt buộc ghi lý do).
 - Mức tiền công chốt theo lúc vào ca; đổi mức lương chỉ áp dụng cho ca sau đó.
 

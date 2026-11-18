@@ -290,13 +290,14 @@ async function fillPhotos(root=document){
   imgs.forEach(i=>{const [id,k]=i.dataset.ph.split('|');const v=PH['s:'+id+':'+k];if(v&&i.isConnected)i.src=v});
 }
 /* Nhân viên check in / check out: giờ do máy chủ Firebase ghi, không lấy giờ điện thoại */
-async function fbCheckIn(img){
+async function fbCheckIn(img,geo){
   const ref=fbDb.ref('shifts').push();
-  await fbDb.ref().update({['shifts/'+ref.key]:{userId:ME.id,inAt:TS(),rate:ME.rate,pin:true},['shiftPhoto/'+ref.key+'/in']:img});
+  await fbDb.ref().update({['shifts/'+ref.key]:clean({userId:ME.id,inAt:TS(),rate:ME.rate,pin:true,inGeo:geo||undefined}),['shiftPhoto/'+ref.key+'/in']:img});
   PH['s:'+ref.key+':in']=img;return fromShift(ref.key,await val('shifts/'+ref.key));
 }
-async function fbCheckOut(s,img){
-  await fbDb.ref().update({['shifts/'+s.id+'/outAt']:TS(),['shifts/'+s.id+'/pout']:true,['shiftPhoto/'+s.id+'/out']:img});
+async function fbCheckOut(s,img,geo){
+  const up={['shifts/'+s.id+'/outAt']:TS(),['shifts/'+s.id+'/pout']:true,['shiftPhoto/'+s.id+'/out']:img};if(geo)up['shifts/'+s.id+'/outGeo']=geo;
+  try{await fbDb.ref().update(up)}catch(e){if(!geo)throw e;delete up['shifts/'+s.id+'/outGeo'];await fbDb.ref().update(up)} // phòng khi quy tắc cũ chưa cho ghi vị trí lúc ra
   PH['s:'+s.id+':out']=img;return fromShift(s.id,await val('shifts/'+s.id));
 }
 /* Số điện thoại: chuẩn hoá về dạng 0xxxxxxxxx (bỏ khoảng trắng, +84, mất số 0 đầu khi dán từ Excel) */
@@ -312,7 +313,7 @@ const DEFAULT_SETTINGS={id:'settings',
   addr1:'Phân khu chức năng số 7.9, Khu Du Lịch Hồ Tuyền Lâm',
   addr2:'Phường Xuân Hương - Đà Lạt, Lâm Đồng',
   title:'BẢNG TÍNH LƯƠNG SINH VIÊN LÀM THÊM GIỜ',
-  roundMin:1, v2:true, capOn:true, shiftSplit:'12:00', cap1:'14:00', cap2:'22:00', defaultRate:35000, defaultDept:'Nhà Hàng', defaultBank:'MBbank', maxShiftHours:14,
+  roundMin:1, v2:true, geoOn:true, geoMode:'block', geoLat:11.8948927, geoLng:108.4380538, geoRadius:500, capOn:true, shiftSplit:'12:00', cap1:'14:00', cap2:'22:00', defaultRate:35000, defaultDept:'Nhà Hàng', defaultBank:'MBbank', maxShiftHours:14,
   signers:['Người Lập','Kiểm Tra','Giám sát','Ký duyệt'], signerNames:['','','','']};
 let S={...DEFAULT_SETTINGS};
 let ME=null, TAB='att', TIMER=null;
@@ -344,6 +345,44 @@ const inRange=(iso,from,to)=>{const d=ymd(iso);return d>=from&&d<=to};
 const byInDesc=(a,b)=>b.inAt.localeCompare(a.inAt);
 function avatar(u){if(u&&u.photo)return u.photo;const n=((u&&u.name)||'?').trim().split(/\s+/);const t=(n.length>1?n[n.length-1][0]+n[0][0]:n[0][0]).toUpperCase();
   return 'data:image/svg+xml,'+encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80"><rect width="80" height="80" fill="#f6e7dd"/><text x="40" y="50" font-family="Arial" font-size="30" font-weight="700" fill="#A14C24" text-anchor="middle">${t}</text></svg>`)}
+/* ---------- Định vị khi chấm công ---------- */
+function getPos(){return new Promise((res,rej)=>{if(!navigator.geolocation)return rej({code:0});
+  navigator.geolocation.getCurrentPosition(p=>res({lat:+p.coords.latitude.toFixed(6),lng:+p.coords.longitude.toFixed(6),acc:Math.round(p.coords.accuracy||0)}),rej,{enableHighAccuracy:true,timeout:20000,maximumAge:0})})}
+function distM(a,b){const R=6371000,t=x=>x*Math.PI/180,dLa=t(b.lat-a.lat),dLo=t(b.lng-a.lng);
+  const h=Math.sin(dLa/2)**2+Math.cos(t(a.lat))*Math.cos(t(b.lat))*Math.sin(dLo/2)**2;return Math.round(2*R*Math.asin(Math.sqrt(h)))}
+const fmtDist=m=>m>=1000?(m/1000).toLocaleString('vi-VN',{maximumFractionDigits:1})+' km':m+' m';
+const SITE=()=>({lat:+S.geoLat,lng:+S.geoLng});
+/* Trong khu nếu khoảng cách trừ sai số GPS (tối đa 100 m) không vượt bán kính */
+const geoInside=g=>g&&(distM(SITE(),g)-Math.min(g.acc||0,100))<=(+S.geoRadius||500);
+const mapLink=g=>`https://www.google.com/maps?q=${g.lat},${g.lng}`;
+function geoTag(g,label){
+  if(!g)return S.geoOn?`<span class="tag off" title="Không ghi nhận được vị trí">📍 ${label?label+': ':''}không có</span>`:'';
+  const d=distM(SITE(),g),ok=geoInside(g);
+  return `<a class="tag ${ok?'ok':'warn'}" href="${mapLink(g)}" target="_blank" rel="noopener" title="Sai số GPS ±${g.acc||'?'} m · bấm để xem bản đồ">📍 ${label?label+': ':''}${ok?'Trong khu':'Ngoài khu'} · ${fmtDist(d)}</a>`;
+}
+async function checkLocation(){
+  if(!S.geoOn)return {ok:true,geo:null};
+  const w=modal('<h3>📍 Đang lấy vị trí…</h3><p class="muted sm">Nếu điện thoại hỏi quyền vị trí, bấm <b>Cho phép</b>.</p>',{lock:true});
+  let geo=null,errCode=null;
+  try{geo=await getPos()}catch(e){errCode=e&&e.code}
+  w.close();
+  const block=S.geoMode==='block';
+  if(!geo){
+    const ios=/iphone|ipad|ipod/i.test(navigator.userAgent);
+    modal(`<h3>Chưa lấy được vị trí</h3><p>${errCode===1?'Bạn đang chặn quyền vị trí của app.':'Điện thoại chưa xác định được vị trí (GPS yếu hoặc đang tắt).'}</p>
+      <p class="sm"><b>Cách bật:</b> ${ios?'Cài đặt → Quyền riêng tư & Bảo mật → Dịch vụ định vị → bật, rồi chọn Safari (hoặc Trang web Safari) → <b>Khi dùng app</b>. Mở lại app và thử lại.':'Bật GPS/Vị trí trên điện thoại. Trong Chrome, bấm biểu tượng ⓘ hoặc ổ khoá cạnh địa chỉ trang → Quyền → Vị trí → <b>Cho phép</b>. Tải lại trang rồi thử lại.'}</p>
+      ${block?'<p class="muted sm">Cần có vị trí mới chấm công được.</p>':''}<div class="row" style="justify-content:flex-end"><button class="btn" data-x="close">Đã hiểu</button></div>`);
+    return {ok:!block,geo:null};
+  }
+  if(!geoInside(geo)){
+    const d=fmtDist(distM(SITE(),geo));
+    if(block){modal(`<h3>Bạn đang ở ngoài khu resort</h3><p>Vị trí hiện tại cách khu Terracotta khoảng <b>${d}</b>. Chỉ chấm công được khi bạn đang ở trong khu resort.</p>
+      <p class="muted sm">Nếu bạn đang ở resort mà vẫn báo sai: ra chỗ thoáng, bật Wi-Fi và GPS, đợi vài giây rồi thử lại. Vẫn không được thì báo quản lý.</p>
+      <div class="row" style="justify-content:flex-end"><button class="btn" data-x="close">Đã hiểu</button></div>`);return {ok:false,geo}}
+    if(!confirm('Bạn đang ở ngoài khu resort (cách khoảng '+d+'). Vẫn chấm công? Quản lý sẽ thấy vị trí này.'))return {ok:false,geo};
+  }
+  return {ok:true,geo};
+}
 function stopTimers(){if(TIMER){clearInterval(TIMER);TIMER=null}}
 
 /* ---------- Khởi động ---------- */
@@ -571,7 +610,7 @@ function staffHome(mine,reqs){
         <div class="muted sm" style="margin:-6px 0 12px">Đã làm <b id="elapsed">${dur(now-new Date(open.inAt))}</b>${info.capOn?` · tính công tối đa đến <b>${hm(info.cap)}</b>`:''}</div>
         <button class="btn orange bigbtn" data-act="checkout">📸 Chụp ảnh CHECK OUT</button>`
       :`<div class="status off">Chưa vào ca</div><br><button class="btn green bigbtn" data-act="checkin">📸 Chụp ảnh CHECK IN</button>`}
-      <div class="muted sm" style="margin-top:12px">Giờ vào/ra lấy đúng lúc chụp ảnh. Ảnh được lưu để quản lý đối chiếu khuôn mặt.</div>
+      <div class="muted sm" style="margin-top:12px">${S.geoOn?'📍 Cần bật định vị và đang ở trong khu resort. ':''}Giờ vào/ra lấy đúng lúc chụp ảnh. Ảnh được lưu để quản lý đối chiếu khuôn mặt.</div>
     </div>
     <div class="stats" style="grid-template-columns:1fr 1fr"><div class="stat"><div class="k">Hôm nay đã làm</div><div class="v">${fmtHM(tMin)}</div></div>
       <div class="stat"><div class="k">Tiền công hôm nay</div><div class="v">${money(tMoney)}đ</div></div></div>
@@ -618,11 +657,12 @@ async function staffCheck(kind){
   const open=(await DB.mine('shifts')).find(s=>!s.outAt);
   if(kind==='in'&&open)return renderStaff();
   if(kind==='out'&&!open)return renderStaff();
+  const loc=await checkLocation();if(!loc.ok)return;
   const shot=await openCamera({title:kind==='in'?'Chụp ảnh CHECK IN':'Chụp ảnh CHECK OUT',label:kind==='in'?'CHECK IN':'CHECK OUT',name:ME.name});
   if(!shot)return;
   try{
-    if(kind==='in'){const s=await fbCheckIn(shot.img);toast('Đã check in lúc '+hm(s.inAt)+'. Chúc làm việc vui vẻ!')}
-    else{const s=await fbCheckOut(open,shot.img);toast('Đã check out lúc '+hm(s.outAt)+' · '+fmtHM(shiftMinutes(s)))}
+    if(kind==='in'){const s=await fbCheckIn(shot.img,loc.geo);toast('Đã check in lúc '+hm(s.inAt)+'. Chúc làm việc vui vẻ!')}
+    else{const s=await fbCheckOut(open,shot.img,loc.geo);toast('Đã check out lúc '+hm(s.outAt)+' · '+fmtHM(shiftMinutes(s)))}
   }catch(x){alert('Chưa lưu được chấm công, kiểm tra mạng rồi chụp lại.\n('+(x.code||x.message||x)+')');return}
   STAB='home';renderStaff();
 }
@@ -789,11 +829,11 @@ async function tabAtt(){
     ${list.length?list.map(s=>{const u=U[s.userId]||{name:'(đã xoá)'};const late=!s.outAt&&nowMs-new Date(s.inAt)>maxMs;
       return `<tr><td><div class="row" style="flex-wrap:nowrap"><img class="avatar" src="${avatar(u)}" alt=""><div><b>${esc(u.name)}</b><div class="muted sm">${esc(u.dept||'')}</div></div></div></td>
       <td>${dmy(s.inAt)}<div class="muted sm">Ca ${shiftInfo(s).ca}</div></td>
-      <td>${s.pin?thumbImg(s,'in'):''}<b>${hm(s.inAt)}</b></td>
+      <td>${s.pin?thumbImg(s,'in'):''}<b>${hm(s.inAt)}</b>${s.manual?'':'<div>'+geoTag(s.inGeo)+'</div>'}</td>
       <td>${s.outAt?(s.pout?thumbImg(s,'out'):'')+`<b>${hm(s.outAt)}</b>${ymd(s.outAt)!==ymd(s.inAt)?' <span class="muted sm">('+dm(s.outAt)+')</span>':''}`
         :`<span class="tag ${late?'warn':'open'}">${late?'Quên check-out?':'Đang làm'}</span>`}
         ${isCapped(s)?` <span class="tag open" title="Ra thực tế ${hm(s.outAt)}, chỉ tính công đến giờ chốt ca">Tính đến ${hm(effOut(s))}</span>`:''}${s.allowOver&&s.outAt?' <span class="tag ok">Duyệt quá giờ</span>':''}
-        ${s.editedAt?` <span class="tag edit" title="${esc('Sửa bởi '+s.editedBy+' lúc '+dmy(s.editedAt)+' '+hm(s.editedAt)+': '+(s.editNote||''))}">Đã sửa</span>`:''}${s.manual?' <span class="tag edit">Thủ công</span>':''}</td>
+        ${s.editedAt?` <span class="tag edit" title="${esc('Sửa bởi '+s.editedBy+' lúc '+dmy(s.editedAt)+' '+hm(s.editedAt)+': '+(s.editNote||''))}">Đã sửa</span>`:''}${s.manual?' <span class="tag edit">Thủ công</span>':''}${s.outAt&&s.pout?'<div>'+geoTag(s.outGeo)+'</div>':''}</td>
       <td class="r">${s.outAt?fmtHM(shiftMinutes(s)):'–'}</td><td class="r">${s.outAt?money(shiftMoney(s)):'–'}</td>
       <td style="white-space:nowrap"><button class="btn ghost sm" data-act="viewShift" data-id="${s.id}">Xem</button> <button class="btn ghost sm" data-act="editShift" data-id="${s.id}">Sửa</button> <button class="btn danger sm" data-act="delShift" data-id="${s.id}">Xoá</button></td></tr>`}).join('')
       :'<tr><td colspan="7" class="muted" style="text-align:center;padding:20px">Không có dữ liệu trong khoảng này.</td></tr>'}
@@ -807,6 +847,7 @@ async function viewShift(id){
   modal(`<div class="row"><h3 style="margin:0">${esc(u.name)} · ${dmy(s.inAt)}</h3><div class="sp"></div><button class="btn ghost sm" data-x="close">Đóng</button></div>
     <p class="muted sm">${esc(u.dept||'')} · @${esc(u.username||'')} · Ca ${shiftInfo(s).ca} · Số giờ: <b>${s.outAt?fmtHM(shiftMinutes(s)):'đang làm'}</b>${isCapped(s)?` <span class="tag open">Ra ${hm(s.outAt)}, tính đến ${hm(effOut(s))}</span>`:''} · Tiền: <b>${s.outAt?money(shiftMoney(s))+'đ':'–'}</b></p>
     <div class="cmp">${fig(u.photo,'<b>Ảnh gốc hồ sơ</b>')}${fig(s.inPhoto,'<b>Check in</b> '+hms(s.inAt))}${fig(s.outPhoto,s.outAt?'<b>Check out</b> '+hms(s.outAt)+' '+dm(s.outAt):'Chưa check out')}</div>
+    ${s.manual?'':`<p class="sm">${geoTag(s.inGeo,'Vào')} ${s.outAt&&s.pout?geoTag(s.outGeo,'Ra'):''} <span class="muted">(bấm để mở bản đồ)</span></p>`}
     ${s.editedAt?`<p class="sm"><span class="tag edit">Đã sửa</span> bởi ${esc(s.editedBy)} lúc ${dmy(s.editedAt)} ${hm(s.editedAt)}. Lý do: ${esc(s.editNote||'')}${s.orig?`<br><span class="muted">Giờ gốc: vào ${hm(s.orig.inAt)} ${dm(s.orig.inAt)} · ra ${s.orig.outAt?hm(s.orig.outAt)+' '+dm(s.orig.outAt):'chưa có'}</span>`:''}</p>`:''}
     ${ME.role==='admin'?`<div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn ghost" data-x="close" data-act="editShift" data-id="${s.id}">Sửa giờ</button></div>`:''}`,{wide:true});
 }
@@ -1018,6 +1059,13 @@ async function tabSet(){
     <p class="muted sm">Đổi mức tiền công của một người chỉ áp dụng cho các ca check in sau thời điểm đổi; ca cũ giữ mức cũ.</p>
    </div>
   </div>
+  <div class="card" style="margin-top:16px"><div class="sectionT" style="margin-top:0">📍 Định vị khi chấm công</div>
+    <label style="display:flex;gap:8px;align-items:center;color:var(--ink)"><input type="checkbox" id="s_geo" style="width:auto" ${S.geoOn?'checked':''}> <b>Bật định vị</b>: lấy vị trí GPS mỗi lần check in / check out</label>
+    <label>Khi nhân viên ở ngoài khu</label><select id="s_gm"><option value="block" ${S.geoMode!=='flag'?'selected':''}>Không cho chấm công</option><option value="flag" ${S.geoMode==='flag'?'selected':''}>Vẫn cho chấm, đánh dấu đỏ để quản lý xem</option></select>
+    <div class="grid2" style="grid-template-columns:1fr 1fr 1fr"><div><label>Vĩ độ</label><input id="s_glat" value="${esc(S.geoLat)}" inputmode="decimal"></div><div><label>Kinh độ</label><input id="s_glng" value="${esc(S.geoLng)}" inputmode="decimal"></div><div><label>Bán kính cho phép (m)</label><input id="s_grad" type="number" min="50" step="50" value="${S.geoRadius}"></div></div>
+    <div class="row" style="margin-top:10px"><button class="btn ghost sm" data-act="geoHere">📍 Lấy vị trí máy này (khi đang ở resort)</button><a class="btn ghost sm" href="${mapLink({lat:S.geoLat,lng:S.geoLng})}" target="_blank" rel="noopener">🗺️ Xem trên bản đồ</a><span class="muted sm" id="s_ginfo"></span></div>
+    <p class="muted sm">Mặc định là vị trí Terracotta Hotel & Resort Đà Lạt, bán kính 500 m. Lưu ý: GPS trong nhà có thể lệch vài chục mét; người cố tình dùng app giả vị trí vẫn có thể qua mặt, nên ảnh khuôn mặt vẫn là bằng chứng chính.</p>
+  </div>
   <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn" data-act="saveSet">Lưu cài đặt</button></div>
   <div class="card" style="margin-top:16px"><div class="sectionT" style="margin-top:0">Dữ liệu</div>
     <p class="muted sm">Dữ liệu lưu trên máy chủ Firebase (Singapore), mọi máy đăng nhập đều thấy như nhau. Có thể tải bản sao lưu về máy (không gồm ảnh) để cất giữ.</p>
@@ -1028,7 +1076,7 @@ async function tabSet(){
 async function saveSettings(){
   const v=s=>$(s).value.trim();
   Object.assign(S,{company:v('#s_co'),addr1:v('#s_a1'),addr2:v('#s_a2'),title:v('#s_ti'),roundMin:+$('#s_rd').value,defaultRate:+$('#s_rt').value||0,
-    defaultDept:v('#s_dp'),defaultBank:v('#s_bk'),maxShiftHours:+$('#s_mx').value||14,capOn:$('#s_cap').checked,cap1:$('#s_c1').value||'14:00',cap2:$('#s_c2').value||'22:00',shiftSplit:$('#s_sp').value||'12:00',signerNames:S.signers.map((_,i)=>v('#s_sn'+i))});
+    defaultDept:v('#s_dp'),defaultBank:v('#s_bk'),maxShiftHours:+$('#s_mx').value||14,geoOn:$('#s_geo').checked,geoMode:$('#s_gm').value,geoLat:+$('#s_glat').value||S.geoLat,geoLng:+$('#s_glng').value||S.geoLng,geoRadius:+$('#s_grad').value||500,capOn:$('#s_cap').checked,cap1:$('#s_c1').value||'14:00',cap2:$('#s_c2').value||'22:00',shiftSplit:$('#s_sp').value||'12:00',signerNames:S.signers.map((_,i)=>v('#s_sn'+i))});
   await DB.put('kv',S);toast('Đã lưu cài đặt');renderAdmin();
 }
 async function backup(){
@@ -1073,7 +1121,7 @@ async function makeDemo(){
   const fixed={'lan.nt':[['2026-11-06','17:00','22:00']],'khoa.tm':[['2026-11-06','16:30','22:00'],['2026-11-07','16:30','22:00']],
     'phuc.lh':[['2026-11-06','16:00','22:00'],['2026-11-07','16:00','22:00']],'anh.pn':[['2026-11-07','16:00','22:00']]};
   const forgotDay=addDays(T,-2); // Vũ Đức Tài quên check out từ 2 ngày trước
-  let made=0,editedOne=false,manualOne=false,overOne=false;
+  let made=0,editedOne=false,manualOne=false,overOne=false,farOne=false;
   for(const [name,un,col,dept,type,rate,bank,[ti,to]] of ppl){
     const id=uid(),stk='DEMO'+String(1000+made).slice(-4);made++;
     await DB.put('users',{id,name,username:un,role:'staff',active:true,_newPw:'123456',mustChange:false,dept,rate,type,bank,stk,phone:'09'+String(10000000+made*1234567).slice(0,8),
@@ -1095,6 +1143,9 @@ async function makeDemo(){
       if(oa&&oa.getTime()>now)oa=null; // ca hôm nay còn đang làm
       const s={id:uid(),userId:id,inAt:ia.toISOString(),outAt:oa?oa.toISOString():null,inPhoto:fakeFace(name,col,'CHECK IN',ia),
         outPhoto:oa?fakeFace(name,col,'CHECK OUT',oa):null,rate,createdAt:ia.toISOString(),demo:true};
+      const near=()=>({lat:+(S.geoLat+(rnd()-.5)*.003).toFixed(6),lng:+(S.geoLng+(rnd()-.5)*.003).toFixed(6),acc:ri(8,40)});
+      s.inGeo=near();if(oa)s.outGeo=near();
+      if(!farOne&&un==='anh.pn'&&!isFixed&&oa){farOne=true;s.inGeo={lat:11.940419,lng:108.458313,acc:25}} // 1 ca chấm ở trung tâm Đà Lạt (ngoài khu)
       if(!editedOne&&un==='khoa.tm'&&!isFixed&&oa&&d<addDays(T,-3)){ // 1 ca quên check out, quản lý sửa giờ
         editedOne=true;s.orig={inAt:s.inAt,outAt:null};s.outPhoto=null;oa=new Date(d+'T22:00');s.outAt=oa.toISOString();
         s.editedBy='Quản trị viên';s.editedAt=new Date(oa.getTime()+36e5*11).toISOString();s.editNote='Quên check-out, quản lý ca xác nhận ra lúc 22:00';
@@ -1274,7 +1325,8 @@ const ACTS={
   payPrint(){printPayroll()},payXlsx(){exportXlsx()},
   addUser(){editUser(null)},editUser(d){editUser(d.id)},
   userHist(d){F={from:quickRange('month')[0],to:today(),user:d.id};TAB='att';renderAdmin()},
-  saveSet(){saveSettings()},backup(){backup()},wipe(){wipe()},demo(){makeDemo()},rmDemo(){removeDemo()},bulkUser(){bulkModal()}
+  saveSet(){saveSettings()},
+  async geoHere(){const i=$('#s_ginfo');i.textContent='Đang lấy vị trí…';try{const g=await getPos();$('#s_glat').value=g.lat;$('#s_glng').value=g.lng;i.textContent='Đã lấy (sai số ±'+g.acc+' m). Bấm Lưu cài đặt.'}catch(e){i.textContent='Không lấy được vị trí, hãy cho phép trình duyệt dùng vị trí.'}},backup(){backup()},wipe(){wipe()},demo(){makeDemo()},rmDemo(){removeDemo()},bulkUser(){bulkModal()}
 };
 document.addEventListener('click',e=>{const b=e.target.closest('[data-act]');if(!b)return;const f=ACTS[b.dataset.act];if(f){e.preventDefault();f(b.dataset,b)}});
 if('serviceWorker' in navigator&&location.protocol.startsWith('http'))window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
