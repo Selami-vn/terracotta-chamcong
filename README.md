@@ -5,6 +5,7 @@ App chấm công bằng ảnh cho lao động thời vụ / sinh viên làm thê
 ## Tính năng
 
 **Nhân viên (giao diện điện thoại, cài được như app)**
+- **Đăng nhập bằng số điện thoại** (10 số, bắt đầu bằng 0) + mật khẩu. Quản lý bấm "Quản lý đăng nhập tại đây" để dùng tên đăng nhập.
 - **Chấm công**: bấm Chụp ảnh CHECK IN / CHECK OUT bằng camera trước, ảnh đóng dấu tên + ngày giờ. Xem giờ làm hôm nay, các ca gần đây.
 - **Lương của tôi**: chọn tháng, xem tổng tiền tạm tính, số ca, tổng giờ, chi tiết từng ca. Thấy sai thì bấm **Báo sai giờ**.
 - **Hồ sơ**: xem thông tin của mình, **gửi yêu cầu chỉnh sửa** họ tên, SĐT, số tài khoản, ngân hàng, ảnh hồ sơ (admin duyệt mới đổi), đổi mật khẩu, cài app.
@@ -27,7 +28,7 @@ App chấm công bằng ảnh cho lao động thời vụ / sinh viên làm thê
 
 ## Chạy thử bản demo
 
-Mở `index.html` bằng Chrome hoặc Safari (trên máy tính hoặc điện thoại). Đăng nhập lần đầu: `admin` / `admin123`.
+Mở `index.html` bằng Chrome hoặc Safari (trên máy tính hoặc điện thoại). Đăng nhập lần đầu: bấm **Quản lý đăng nhập tại đây**, nhập `admin` / `admin123`.
 Bấm **Tạo dữ liệu mẫu để xem thử** (hoặc Cài đặt → Tạo dữ liệu mẫu): 8 nhân sự giả, chấm công 14 ngày gần nhất. Xem xong bấm **Xoá dữ liệu mẫu** trước khi dùng thật.
 
 > ⚠️ Bản demo lưu dữ liệu **trên trình duyệt của từng máy**. Phù hợp khi dùng 1 máy tính bảng đặt cố định ở bộ phận (kiosk). Muốn nhân sự chấm công bằng điện thoại riêng và admin xem từ máy khác thì cần làm bước "Đưa lên máy chủ" bên dưới.
