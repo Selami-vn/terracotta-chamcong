@@ -1,0 +1,77 @@
+{
+  "rules": {
+    ".read": "auth != null && root.child('staff').child(root.child('uids').child(auth.uid).val()+'').child('role').val() === 'admin' && root.child('staff').child(root.child('uids').child(auth.uid).val()+'').child('active').val() === true",
+    ".write": "auth != null && root.child('staff').child(root.child('uids').child(auth.uid).val()+'').child('role').val() === 'admin' && root.child('staff').child(root.child('uids').child(auth.uid).val()+'').child('active').val() === true",
+    "meta": {
+      ".read": true,
+      ".write": "auth != null && !root.child('staff').exists()"
+    },
+    "settings": {
+      ".read": true,
+      ".write": "auth != null && !root.child('staff').exists()"
+    },
+    "login": {
+      "$key": {
+        ".read": true,
+        ".write": "auth != null && !root.child('staff').exists()"
+      }
+    },
+    "uids": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid && !root.child('staff').exists()"
+      }
+    },
+    "staff": {
+      "$sid": {
+        ".read": "auth != null && root.child('uids').child(auth.uid).val() === $sid",
+        ".write": "auth != null && !root.child('staff').exists() && newData.child('role').val() === 'admin' && newData.parent().parent().child('uids').child(auth.uid).val() === $sid",
+        "mustChange": {
+          ".write": "auth != null && root.child('uids').child(auth.uid).val() === $sid && newData.val() === false"
+        }
+      }
+    },
+    "staffPhoto": {
+      "$sid": {
+        ".read": "auth != null && root.child('uids').child(auth.uid).val() === $sid"
+      }
+    },
+    "shifts": {
+      ".indexOn": [
+        "userId"
+      ],
+      ".read": "auth != null && query.orderByChild === 'userId' && query.equalTo === root.child('uids').child(auth.uid).val()",
+      "$id": {
+        ".read": "auth != null && data.child('userId').val() === root.child('uids').child(auth.uid).val()",
+        ".write": "auth != null && root.child('staff').child(root.child('uids').child(auth.uid).val()+'').child('active').val() === true && !data.exists() && newData.child('userId').val() === root.child('uids').child(auth.uid).val() && newData.child('inAt').val() === now && !newData.child('outAt').exists() && !newData.child('allowOver').exists() && !newData.child('editedAt').exists() && !newData.child('manual').exists() && newData.child('rate').val() === root.child('staff').child(root.child('uids').child(auth.uid).val()+'').child('rate').val()",
+        "outAt": {
+          ".write": "auth != null && root.child('staff').child(root.child('uids').child(auth.uid).val()+'').child('active').val() === true && data.parent().child('userId').val() === root.child('uids').child(auth.uid).val() && !data.exists() && newData.val() === now"
+        },
+        "pout": {
+          ".write": "auth != null && root.child('staff').child(root.child('uids').child(auth.uid).val()+'').child('active').val() === true && data.parent().child('userId').val() === root.child('uids').child(auth.uid).val() && !data.exists() && newData.val() === true"
+        }
+      }
+    },
+    "shiftPhoto": {
+      "$id": {
+        ".read": "auth != null && root.child('shifts').child($id).child('userId').val() === root.child('uids').child(auth.uid).val()",
+        "in": {
+          ".write": "auth != null && root.child('staff').child(root.child('uids').child(auth.uid).val()+'').child('active').val() === true && !data.exists() && newData.parent().parent().parent().child('shifts').child($id).child('userId').val() === root.child('uids').child(auth.uid).val()"
+        },
+        "out": {
+          ".write": "auth != null && root.child('staff').child(root.child('uids').child(auth.uid).val()+'').child('active').val() === true && !data.exists() && newData.parent().parent().parent().child('shifts').child($id).child('userId').val() === root.child('uids').child(auth.uid).val()"
+        }
+      }
+    },
+    "requests": {
+      ".indexOn": [
+        "userId"
+      ],
+      ".read": "auth != null && query.orderByChild === 'userId' && query.equalTo === root.child('uids').child(auth.uid).val()",
+      "$id": {
+        ".read": "auth != null && data.child('userId').val() === root.child('uids').child(auth.uid).val()",
+        ".write": "auth != null && ((!data.exists() && newData.child('userId').val() === root.child('uids').child(auth.uid).val() && newData.child('status').val() === 'pending') || (data.child('userId').val() === root.child('uids').child(auth.uid).val() && data.child('status').val() === 'pending' && !newData.exists()))"
+      }
+    }
+  }
+}

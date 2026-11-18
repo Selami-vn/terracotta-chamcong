@@ -6,6 +6,9 @@
 <meta name="theme-color" content="#A14C24">
 <title>Terracotta · Chấm công thời vụ</title>
 <link rel="icon" href="icons/icon-192.png">
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -138,7 +141,7 @@ label{display:block;font-size:13px;color:var(--muted);margin:10px 0 4px}
 html{scroll-padding-bottom:110px}
 .mtop{display:flex;align-items:center;gap:10px;background:#fff;padding:calc(8px + env(safe-area-inset-top)) 16px 8px;position:sticky;top:0;z-index:5;border-bottom:3px solid var(--brown)}
 .mtop img{height:34px}
-.mbody{max-width:560px;padding-bottom:calc(92px + env(safe-area-inset-bottom))}
+.wrap.mbody{max-width:560px;padding-bottom:calc(96px + env(safe-area-inset-bottom))}
 .bnav{position:fixed;left:0;right:0;bottom:0;display:flex;background:#fff;border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom);z-index:20;box-shadow:0 -4px 16px #a14c2412}
 .bnav button{flex:1;border:0;background:none;padding:8px 4px 10px;font-size:12px;font-weight:600;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer}
 .bnav button .ic{font-size:22px;line-height:1.1;filter:grayscale(1);opacity:.6}
@@ -194,27 +197,106 @@ const today=()=>ymd(new Date());
 const addDays=(s,n)=>{const d=new Date(s+'T00:00');d.setDate(d.getDate()+n);return ymd(d)};
 function toast(t){const e=document.createElement('div');e.className='toast';e.textContent=t;document.body.appendChild(e);setTimeout(()=>e.remove(),2600)}
 
-/* ---------- Lớp dữ liệu (IndexedDB) ---------- */
+/* ---------- Lớp dữ liệu: Firebase Realtime Database + Firebase Authentication ----------
+   Cấu trúc dữ liệu:
+   staff/{sid}            hồ sơ nhân sự (không có ảnh, không có mật khẩu)
+   staffPhoto/{sid}       ảnh gốc hồ sơ
+   uids/{authUid}         = sid  (tài khoản đăng nhập Firebase → nhân sự)
+   login/{sđt | u-tên}    = {sid, v}  (tra cứu để đăng nhập bằng SĐT / tên đăng nhập)
+   shifts/{id}            ca làm (giờ lưu dạng số ms, giờ check in/out do MÁY CHỦ ghi)
+   shiftPhoto/{id}        {in, out} ảnh check in / out
+   requests/{id}          yêu cầu sửa thông tin / báo sai giờ
+   settings, meta         cài đặt chung
+   Mật khẩu do Firebase Authentication giữ (mã hoá), app không lưu. */
+const FB_CONFIG={apiKey:"AIzaSyDVIYV9eSDpIm1pxYhL_xE_6gb3UimH4ls",authDomain:"terracotta-chamcong-aae0b.firebaseapp.com",
+  databaseURL:"https://terracotta-chamcong-aae0b-default-rtdb.asia-southeast1.firebasedatabase.app",projectId:"terracotta-chamcong-aae0b",
+  storageBucket:"terracotta-chamcong-aae0b.firebasestorage.app",messagingSenderId:"185225695332",appId:"1:185225695332:web:491b644a7f6a0844ef8f71"};
+const MAIL_DOMAIN='@tc-chamcong.app';
+let fbAuth=null,fbDb=null;
+const TS=()=>firebase.database.ServerValue.TIMESTAMP;
+const isoT=v=>v==null?null:(typeof v==='number'?new Date(v).toISOString():v);
+const msT=v=>v==null?null:(typeof v==='string'?new Date(v).getTime():v);
+const clean=o=>JSON.parse(JSON.stringify(o));
+const PH={}; // bộ nhớ tạm ảnh: 'u:sid', 's:id:in', 's:id:out'
+const val=async p=>(await fbDb.ref(p).get()).val();
+const mapObj=o=>o?Object.entries(o).map(([id,v])=>({...v,id})):[];
+const loginKeys=u=>{const a=[];if(u&&u.username)a.push('u-'+u.username);if(u&&u.phone)a.push(normPhone(u.phone));return a};
+const emailOf=(sid,v)=>sid.toLowerCase()+'.v'+v+MAIL_DOMAIN;
+function fromShift(id,v){const s={...v,id,inAt:isoT(v.inAt),outAt:isoT(v.outAt),editedAt:isoT(v.editedAt),createdAt:isoT(v.createdAt)};
+  if(v.orig)s.orig={inAt:isoT(v.orig.inAt),outAt:isoT(v.orig.outAt)};return s}
+function toShift(s){const d={...s};delete d.id;delete d.inPhoto;delete d.outPhoto;
+  d.inAt=msT(s.inAt);d.outAt=msT(s.outAt);d.editedAt=msT(s.editedAt);d.createdAt=msT(s.createdAt);
+  if(s.orig)d.orig={inAt:msT(s.orig.inAt),outAt:msT(s.orig.outAt)};
+  d.pin=!!(s.inPhoto||(s.pin&&!('inPhoto' in s)));d.pout=!!(s.outPhoto||(s.pout&&!('outPhoto' in s)));return clean(d)}
+/* Tạo tài khoản đăng nhập Firebase cho nhân sự bằng một phiên phụ, để admin không bị đăng xuất */
+async function createAuth(sid,v,pw){
+  const sec=firebase.apps.find(a=>a.name==='sec')||firebase.initializeApp(FB_CONFIG,'sec');
+  const a=sec.auth();try{await a.setPersistence(firebase.auth.Auth.Persistence.NONE)}catch(e){}
+  const c=await a.createUserWithEmailAndPassword(emailOf(sid,v),pw);const id=c.user.uid;await a.signOut();return id;
+}
+async function phoneTaken(p,exceptId){const L=await val('login/'+normPhone(p));return !!(L&&L.sid!==exceptId)}
 const DB={
-  _db:null,
-  open(){return new Promise((res,rej)=>{const r=indexedDB.open('terracotta_chamcong',2);
-    r.onupgradeneeded=()=>{const db=r.result;['users','shifts','kv','requests'].forEach(n=>{if(!db.objectStoreNames.contains(n))db.createObjectStore(n,{keyPath:'id'})})};
-    r.onsuccess=()=>{DB._db=r.result;res()};r.onerror=()=>rej(r.error)})},
-  _tx(store,mode,fn){return new Promise((res,rej)=>{const tx=DB._db.transaction(store,mode);const req=fn(tx.objectStore(store));
-    tx.oncomplete=()=>res(req?req.result:undefined);tx.onerror=()=>rej(tx.error)})},
-  all:s=>DB._tx(s,'readonly',st=>st.getAll()),
-  get:(s,id)=>DB._tx(s,'readonly',st=>st.get(id)),
-  put:(s,o)=>DB._tx(s,'readwrite',st=>st.put(o)),
-  del:(s,id)=>DB._tx(s,'readwrite',st=>st.delete(id)),
-  clear:s=>DB._tx(s,'readwrite',st=>st.clear())
+  async all(s){
+    if(s==='users'){const [st,ph]=await Promise.all([val('staff'),val('staffPhoto')]);for(const k in (ph||{}))PH['u:'+k]=ph[k];
+      return mapObj(st).map(u=>({...u,photo:PH['u:'+u.id]||null}))}
+    if(s==='shifts')return mapObj(await val('shifts')).map(x=>fromShift(x.id,x));
+    if(s==='requests')return mapObj(await val('requests'));
+    return [];
+  },
+  async mine(s){const snap=await fbDb.ref(s).orderByChild('userId').equalTo(ME.id).get();const a=mapObj(snap.val());return s==='shifts'?a.map(x=>fromShift(x.id,x)):a},
+  async get(s,id){
+    if(s==='kv')return val('settings');
+    if(s==='users'){const v=await val('staff/'+id);if(!v)return null;if(!(('u:'+id) in PH))PH['u:'+id]=await val('staffPhoto/'+id);return {...v,id,photo:PH['u:'+id]||null}}
+    if(s==='shifts'){const v=await val('shifts/'+id);return v?fromShift(id,v):null}
+    if(s==='requests'){const v=await val('requests/'+id);return v?{...v,id}:null}
+  },
+  async put(s,o){
+    if(s==='kv')return fbDb.ref('settings').set(clean(o));
+    if(s==='requests'){const d={...o};delete d.id;return fbDb.ref('requests/'+o.id).set(clean(d))}
+    if(s==='shifts'){const up={['shifts/'+o.id]:toShift(o)};
+      for(const k of ['in','out']){const img=o[k+'Photo'];if(img&&String(img).startsWith('data:')&&PH['s:'+o.id+':'+k]!==img){up['shiftPhoto/'+o.id+'/'+k]=img;PH['s:'+o.id+':'+k]=img}}
+      return fbDb.ref().update(up)}
+    if(s==='users'){
+      const old=await val('staff/'+o.id),u={...o},up={};
+      delete u.id;delete u.photo;delete u.pw;delete u.salt;delete u._newPw;
+      if(o._newPw){const v=((old&&old.authV)||0)+1,nu=await createAuth(o.id,v,o._newPw);
+        if(old&&old.uid&&old.uid!==nu)up['uids/'+old.uid]=null;u.uid=nu;u.authV=v;up['uids/'+nu]=o.id}
+      else if(old){u.uid=old.uid;u.authV=old.authV}
+      for(const k of loginKeys(old))up['login/'+k]=null;
+      for(const k of loginKeys(u))up['login/'+k]={sid:o.id,v:u.authV||1};
+      up['staff/'+o.id]=clean(u);
+      if('photo' in o&&(o.photo||null)!==(PH['u:'+o.id]||null)){up['staffPhoto/'+o.id]=o.photo||null;PH['u:'+o.id]=o.photo||null}
+      return fbDb.ref().update(up)}
+  },
+  async del(s,id){
+    if(s==='shifts')return fbDb.ref().update({['shifts/'+id]:null,['shiftPhoto/'+id]:null});
+    if(s==='requests')return fbDb.ref('requests/'+id).remove();
+    if(s==='users'){const old=await val('staff/'+id),up={['staff/'+id]:null,['staffPhoto/'+id]:null};
+      if(old&&old.uid)up['uids/'+old.uid]=null;for(const k of loginKeys(old))up['login/'+k]=null;return fbDb.ref().update(up)}
+  },
+  async shiftPhotos(id){
+    if(!(('s:'+id+':in') in PH)){const p=(await val('shiftPhoto/'+id))||{};PH['s:'+id+':in']=p.in||null;PH['s:'+id+':out']=p.out||null}
+    return {in:PH['s:'+id+':in'],out:PH['s:'+id+':out']};
+  }
 };
-
-/* ---------- Mật khẩu: băm PBKDF2-SHA256 + salt, không lưu mật khẩu gốc ---------- */
-async function hashPw(pw,salt){
-  const enc=new TextEncoder();
-  const key=await crypto.subtle.importKey('raw',enc.encode(pw),'PBKDF2',false,['deriveBits']);
-  const bits=await crypto.subtle.deriveBits({name:'PBKDF2',salt:enc.encode(salt),iterations:120000,hash:'SHA-256'},key,256);
-  return [...new Uint8Array(bits)].map(b=>b.toString(16).padStart(2,'0')).join('');
+/* Ảnh chấm công tải sau khi bảng hiện ra, cho nhanh */
+const BLANK='data:image/gif;base64,R0lGODlhAQABAAAAACw=';
+const thumbImg=(s,k)=>`<img class="thumb" data-ph="${s.id}|${k}" src="${PH['s:'+s.id+':'+k]||BLANK}" data-act="viewShift" data-id="${s.id}" alt="">`;
+async function fillPhotos(root=document){
+  const imgs=[...root.querySelectorAll('img[data-ph]')].filter(i=>i.src===BLANK||i.src.endsWith('R0lGODlhAQABAAAAACw='));
+  const ids=[...new Set(imgs.map(i=>i.dataset.ph.split('|')[0]))];
+  for(let i=0;i<ids.length;i+=6)await Promise.all(ids.slice(i,i+6).map(id=>DB.shiftPhotos(id).catch(()=>({}))));
+  imgs.forEach(i=>{const [id,k]=i.dataset.ph.split('|');const v=PH['s:'+id+':'+k];if(v&&i.isConnected)i.src=v});
+}
+/* Nhân viên check in / check out: giờ do máy chủ Firebase ghi, không lấy giờ điện thoại */
+async function fbCheckIn(img){
+  const ref=fbDb.ref('shifts').push();
+  await fbDb.ref().update({['shifts/'+ref.key]:{userId:ME.id,inAt:TS(),rate:ME.rate,pin:true},['shiftPhoto/'+ref.key+'/in']:img});
+  PH['s:'+ref.key+':in']=img;return fromShift(ref.key,await val('shifts/'+ref.key));
+}
+async function fbCheckOut(s,img){
+  await fbDb.ref().update({['shifts/'+s.id+'/outAt']:TS(),['shifts/'+s.id+'/pout']:true,['shiftPhoto/'+s.id+'/out']:img});
+  PH['s:'+s.id+':out']=img;return fromShift(s.id,await val('shifts/'+s.id));
 }
 /* Số điện thoại: chuẩn hoá về dạng 0xxxxxxxxx (bỏ khoảng trắng, +84, mất số 0 đầu khi dán từ Excel) */
 const normPhone=p=>String(p||'').replace(/\D/g,'');
@@ -232,7 +314,7 @@ const DEFAULT_SETTINGS={id:'settings',
   roundMin:1, v2:true, capOn:true, shiftSplit:'12:00', cap1:'14:00', cap2:'22:00', defaultRate:35000, defaultDept:'Nhà Hàng', defaultBank:'MBbank', maxShiftHours:14,
   signers:['Người Lập','Kiểm Tra','Giám sát','Ký duyệt'], signerNames:['','','','']};
 let S={...DEFAULT_SETTINGS};
-let ME=null, TAB='att', TIMER=null, FIRST_RUN=false;
+let ME=null, TAB='att', TIMER=null;
 let F={from:today(),to:today(),user:''};          // bộ lọc tab Chấm công
 let P={from:today(),to:today(),user:''};          // bộ lọc tab Bảng lương
 
@@ -265,22 +347,44 @@ function stopTimers(){if(TIMER){clearInterval(TIMER);TIMER=null}}
 
 /* ---------- Khởi động ---------- */
 async function init(){
-  if(!window.isSecureContext||!window.crypto||!crypto.subtle){
-    $('#app').innerHTML=`<div class="wrap"><div class="card"><h3>Cần mở bằng HTTPS</h3><p>Camera và mã hoá mật khẩu chỉ chạy trên trang <b>https://</b> (ví dụ GitHub Pages) hoặc khi mở file trực tiếp trên máy.</p></div></div>`;return;
-  }
-  await DB.open();
-  S=Object.assign({},DEFAULT_SETTINGS,(await DB.get('kv','settings'))||{});
-  if(!S.v2){S.roundMin=1;S.v2=true;await DB.put('kv',S)}
-  const users=await DB.all('users');
-  if(!users.length){
-    const salt=uid();
-    await DB.put('users',{id:uid(),username:'admin',name:'Quản trị viên',role:'admin',salt,pw:await hashPw('admin123',salt),
-      active:true,mustChange:true,dept:'Văn phòng',createdAt:new Date().toISOString()});
-    FIRST_RUN=true;
-  }
-  const sid=sessionStorage.getItem('cc_uid');
-  if(sid){ME=await DB.get('users',sid);if(ME&&!ME.active)ME=null}
-  route();
+  if(!window.firebase){$('#app').innerHTML=`<div class="wrap"><div class="card"><h3>Không kết nối được máy chủ</h3><p>Kiểm tra mạng (wifi / 4G) rồi tải lại trang.</p><button class="btn" onclick="location.reload()">Tải lại</button></div></div>`;return}
+  firebase.initializeApp(FB_CONFIG);fbAuth=firebase.auth();fbDb=firebase.database();
+  $('#app').innerHTML='<div class="login"><div class="card" style="text-align:center"><img src="'+LOGO+'" alt="" style="max-width:220px"><p class="muted">Đang tải…</p></div></div>';
+  try{S=Object.assign({},DEFAULT_SETTINGS,(await val('settings'))||{})}catch(e){}
+  if(!(await val('meta/initialized').catch(()=>null))){renderSetup();return}
+  const user=await new Promise(r=>{const un=fbAuth.onAuthStateChanged(u=>{un();r(u)})});
+  await loadMe(user);route();
+}
+async function loadMe(user){
+  ME=null;if(!user)return;
+  const sid=await val('uids/'+user.uid).catch(()=>null);if(!sid){await fbAuth.signOut();return}
+  const me=await DB.get('users',sid).catch(()=>null);if(!me||!me.active){await fbAuth.signOut();return}
+  ME=me;
+}
+/* Lần đầu dùng: tạo tài khoản quản trị (chỉ làm được khi hệ thống chưa có ai) */
+function renderSetup(){
+  $('#app').innerHTML=`<div class="login"><form class="card" id="setupForm">
+    <img src="${LOGO}" alt="Terracotta Hotel & Resort"><h1>Thiết lập lần đầu</h1>
+    <p class="muted sm" style="text-align:center">Tạo tài khoản quản trị để quản lý chấm công. Chỉ làm một lần.</p>
+    <label>Họ và tên</label><input id="su_n" value="Quản trị viên" required>
+    <label>Tên đăng nhập quản lý</label><input id="su_u" value="admin" autocapitalize="none" required>
+    <label>Mật khẩu (ít nhất 6 ký tự)</label><input id="su_p" type="password" autocomplete="new-password" required>
+    <label>Nhập lại mật khẩu</label><input id="su_p2" type="password" autocomplete="new-password" required>
+    <div class="err" id="su_e"></div><button class="btn" style="width:100%">Tạo tài khoản quản trị</button></form></div>`;
+  $('#setupForm').onsubmit=async e=>{
+    e.preventDefault();const v=x=>$(x).value.trim(),err=$('#su_e'),b=e.target.querySelector('button');
+    const name=v('#su_n'),un=v('#su_u').toLowerCase(),pw=$('#su_p').value;
+    if(!/^[a-z0-9._-]{3,30}$/.test(un))return err.textContent='Tên đăng nhập 3–30 ký tự, chữ không dấu, số, dấu chấm, gạch.';
+    if(pw.length<6)return err.textContent='Mật khẩu ít nhất 6 ký tự.';
+    if(pw!==$('#su_p2').value)return err.textContent='Hai lần nhập mật khẩu không khớp.';
+    b.disabled=true;b.textContent='Đang tạo…';
+    try{
+      const sid=uid(),c=await fbAuth.createUserWithEmailAndPassword(emailOf(sid,1),pw);
+      await fbDb.ref().update({['staff/'+sid]:{name,username:un,role:'admin',active:true,dept:'Văn phòng',uid:c.user.uid,authV:1,createdAt:new Date().toISOString()},
+        ['uids/'+c.user.uid]:sid,['login/u-'+un]:{sid,v:1},'meta/initialized':true,settings:clean(S)});
+      await loadMe(c.user);toast('Đã tạo tài khoản quản trị');route();
+    }catch(x){b.disabled=false;b.textContent='Tạo tài khoản quản trị';err.textContent='Không tạo được: '+(x.message||x)}
+  };
 }
 function route(){
   stopTimers();
@@ -311,7 +415,6 @@ function renderLogin(){
     <button class="btn" style="width:100%;margin-top:6px">Đăng nhập</button>
     <button type="button" class="btn ghost sm" style="display:block;margin:10px auto 0;border:0" data-act="loginMode">${LOGIN_ADMIN?'← Nhân viên đăng nhập bằng số điện thoại':'Quản lý đăng nhập tại đây'}</button>
     ${isStandalone()?'':'<button type="button" class="btn ghost" style="width:100%;margin-top:10px" data-act="install">📲 Cài app vào điện thoại</button>'}
-    ${FIRST_RUN?`<div class="hint">Lần đầu sử dụng: bấm <b>Quản lý đăng nhập tại đây</b>, nhập <b>admin</b> / <b>admin123</b>, app sẽ yêu cầu đổi mật khẩu ngay.</div>`:''}
   </form></div>`;
   $('#loginForm').onsubmit=doLogin;
   if(!LOGIN_ADMIN)$('#lu').addEventListener('input',e=>{const v=e.target.value.replace(/\D/g,'').slice(0,10);if(v!==e.target.value)e.target.value=v});
@@ -323,15 +426,20 @@ async function doLogin(e){
   const f=fails[u];
   if(f&&f.until>Date.now()){err.textContent='Nhập sai 10 lần liên tiếp. Thử lại sau '+Math.ceil((f.until-Date.now())/1000)+' giây.';return}
   if(!LOGIN_ADMIN&&!/^0\d{9}$/.test(u)){err.textContent='Số điện thoại gồm 10 số, bắt đầu bằng 0 (VD: 0905123456).';return}
-  const all=await DB.all('users');
-  const user=LOGIN_ADMIN?all.find(x=>x.username===u):all.find(x=>x.phone&&normPhone(x.phone)===u);
-  if(!user||!user.active||(await hashPw(p,user.salt))!==user.pw){
-    const ff=fails[u]=fails[u]||{n:0};ff.n++;
+  const btn=e.target.querySelector('button.btn:not(.ghost)');btn.disabled=true;
+  const fail=(msg)=>{btn.disabled=false;const ff=fails[u]=fails[u]||{n:0};ff.n++;
     if(ff.n>=10){ff.until=Date.now()+60000;ff.n=0}
-    err.textContent=user&&!user.active?'Tài khoản đã bị khoá. Liên hệ quản lý.':LOGIN_ADMIN?'Sai tên đăng nhập hoặc mật khẩu.':'Sai số điện thoại hoặc mật khẩu. Chưa có tài khoản thì nhờ quản lý tạo.';
-    if(ff.n>=7)err.textContent+=' (còn '+(10-ff.n)+' lần thử)';return;
-  }
-  delete fails[u];FIRST_RUN=false;ME=user;sessionStorage.setItem('cc_uid',user.id);route();
+    err.textContent=msg||(LOGIN_ADMIN?'Sai tên đăng nhập hoặc mật khẩu.':'Sai số điện thoại hoặc mật khẩu. Chưa có tài khoản thì nhờ quản lý tạo.');
+    if(ff.n>=7)err.textContent+=' (còn '+(10-ff.n)+' lần thử)'};
+  let L=null;try{L=await val('login/'+(LOGIN_ADMIN?'u-'+u:u))}catch(x){btn.disabled=false;err.textContent='Không kết nối được máy chủ, kiểm tra mạng.';return}
+  if(!L)return fail();
+  try{await fbAuth.signInWithEmailAndPassword(emailOf(L.sid,L.v),p)}
+  catch(x){if(x.code==='auth/network-request-failed'){btn.disabled=false;err.textContent='Không kết nối được máy chủ, kiểm tra mạng.';return}
+    if(x.code==='auth/too-many-requests'){btn.disabled=false;err.textContent='Đăng nhập sai nhiều lần, hệ thống tạm khoá vài phút. Thử lại sau.';return}
+    return fail()}
+  await loadMe(fbAuth.currentUser);
+  if(!ME){btn.disabled=false;err.textContent='Tài khoản đã bị khoá. Liên hệ quản lý.';return}
+  delete fails[u];route();
 }
 function changePwModal(forced){
   const m=modal(`<h3>${forced?'Đặt mật khẩu mới':'Đổi mật khẩu'}</h3>
@@ -343,12 +451,13 @@ function changePwModal(forced){
     <div class="row" style="justify-content:flex-end">${forced?'':'<button class="btn ghost" data-x="close">Huỷ</button>'}<button class="btn" id="psave">Lưu</button></div>`,{lock:forced});
   $('#psave',m).onclick=async()=>{
     const [a,b,c]=['#p0','#p1','#p2'].map(s=>$(s,m).value),err=$('#perr',m);
-    const me=await DB.get('users',ME.id);
-    if((await hashPw(a,me.salt))!==me.pw)return err.textContent='Mật khẩu hiện tại không đúng.';
     if(b.length<6)return err.textContent='Mật khẩu mới phải có ít nhất 6 ký tự.';
     if(b!==c)return err.textContent='Hai lần nhập không khớp.';
     if(b===a)return err.textContent='Mật khẩu mới phải khác mật khẩu cũ.';
-    me.salt=uid();me.pw=await hashPw(b,me.salt);me.mustChange=false;await DB.put('users',me);ME=me;
+    const user=fbAuth.currentUser;
+    try{await user.reauthenticateWithCredential(firebase.auth.EmailAuthProvider.credential(user.email,a))}catch(x){return err.textContent='Mật khẩu hiện tại không đúng.'}
+    try{await user.updatePassword(b)}catch(x){return err.textContent='Không đổi được mật khẩu: '+(x.message||x)}
+    if(ME.mustChange)await fbDb.ref('staff/'+ME.id+'/mustChange').set(false);ME.mustChange=false;
     m.close();toast('Đã đổi mật khẩu');
   };
 }
@@ -432,8 +541,8 @@ async function renderStaff(){
   stopTimers();
   ME=(await DB.get('users',ME.id))||ME;
   if(!ME.active){ACTS.logout();return}
-  const mine=(await DB.all('shifts')).filter(s=>s.userId===ME.id).sort(byInDesc);
-  const reqs=(await DB.all('requests')).filter(r=>r.userId===ME.id).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
+  const mine=(await DB.mine('shifts')).sort(byInDesc);
+  const reqs=(await DB.mine('requests')).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
   const body=STAB==='pay'?staffPay(mine,reqs):STAB==='me'?staffMe(reqs):staffHome(mine,reqs);
   $('#app').innerHTML=staffShell(body);
   const open=mine.find(s=>!s.outAt);
@@ -505,18 +614,15 @@ function staffMe(reqs){
       <div class="muted sm">Gửi lúc ${hm(r.createdAt)} ${dmy(r.createdAt)}${r.decisionNote?' · Quản lý: '+esc(r.decisionNote):''}</div></div>`).join('')}`:''}`;
 }
 async function staffCheck(kind){
-  const open=(await DB.all('shifts')).find(s=>s.userId===ME.id&&!s.outAt);
+  const open=(await DB.mine('shifts')).find(s=>!s.outAt);
   if(kind==='in'&&open)return renderStaff();
   if(kind==='out'&&!open)return renderStaff();
   const shot=await openCamera({title:kind==='in'?'Chụp ảnh CHECK IN':'Chụp ảnh CHECK OUT',label:kind==='in'?'CHECK IN':'CHECK OUT',name:ME.name});
   if(!shot)return;
-  if(kind==='in'){
-    await DB.put('shifts',{id:uid(),userId:ME.id,inAt:shot.at,inPhoto:shot.img,outAt:null,outPhoto:null,rate:+ME.rate||+S.defaultRate,createdAt:new Date().toISOString()});
-    toast('Đã check in lúc '+hm(shot.at)+'. Chúc làm việc vui vẻ!');
-  }else{
-    open.outAt=shot.at;open.outPhoto=shot.img;await DB.put('shifts',open);
-    toast('Đã check out lúc '+hm(shot.at)+' · '+fmtHM(shiftMinutes(open)));
-  }
+  try{
+    if(kind==='in'){const s=await fbCheckIn(shot.img);toast('Đã check in lúc '+hm(s.inAt)+'. Chúc làm việc vui vẻ!')}
+    else{const s=await fbCheckOut(open,shot.img);toast('Đã check out lúc '+hm(s.outAt)+' · '+fmtHM(shiftMinutes(s)))}
+  }catch(x){alert('Chưa lưu được chấm công, kiểm tra mạng rồi chụp lại.\n('+(x.code||x.message||x)+')');return}
   STAB='home';renderStaff();
 }
 /* ---- Nhân viên gửi yêu cầu ---- */
@@ -535,7 +641,7 @@ async function reqProfile(){
     const v=s=>$(s,m).value.trim(),nv={name:v('#qn'),phone:normPhone(v('#qp')),stk:v('#qs').replace(/\s/g,''),bank:v('#qb')};
     if(!nv.name)return $('#qerr',m).textContent='Họ tên không được để trống.';
     if(!validPhone(nv.phone))return $('#qerr',m).textContent='Số điện thoại phải gồm 10 số, bắt đầu bằng 0.';
-    if((await DB.all('users')).some(x=>x.id!==ME.id&&normPhone(x.phone)===nv.phone))return $('#qerr',m).textContent='Số điện thoại này đã có người dùng.';
+    if(await phoneTaken(nv.phone,ME.id))return $('#qerr',m).textContent='Số điện thoại này đã có người dùng.';
     if(normPhone(ME.phone)===nv.phone)nv.phone=ME.phone||'';
     const changes={};for(const k in nv)if((ME[k]||'')!==nv[k])changes[k]={from:ME[k]||'',to:nv[k]};
     if(photo)changes.photo={from:ME.photo||null,to:photo};
@@ -623,8 +729,14 @@ async function decideReq(id,ok){
 /* ============================================================
    MÀN HÌNH QUẢN TRỊ
    ============================================================ */
+let LIVE=null,LIVE_T=null;
+function startLive(){
+  if(LIVE)return;let first=true;const ref=fbDb.ref('shifts');
+  const cb=()=>{if(first){first=false;return}clearTimeout(LIVE_T);LIVE_T=setTimeout(()=>{if(ME&&ME.role==='admin'&&TAB==='att'&&!$('#modal-root').children.length)tabAtt()},800)};
+  ref.on('value',cb);LIVE={off:()=>ref.off('value',cb)};
+}
 async function renderAdmin(){
-  stopTimers();
+  stopTimers();startLive();
   const nReq=(await DB.all('requests')).filter(r=>r.status==='pending').length;
   const tabs=[['att','📋 Chấm công'],['pay','💰 Bảng lương'],['req','📝 Yêu cầu'+(nReq?` <span class="badge">${nReq}</span>`:'')],['users','👥 Nhân sự'],['set','⚙️ Cài đặt']];
   $('#app').innerHTML=header('Quản trị · '+S.company)+`<div class="tabbar"><nav class="tabs">${tabs.map(([k,l])=>`<button class="${TAB===k?'on':''}" data-act="tab" data-tab="${k}">${l}</button>`).join('')}</nav></div><main id="tabBody" class="wrap"></main>`;
@@ -658,7 +770,7 @@ async function tabAtt(){
       <div class="row" style="justify-content:center"><button class="btn orange" data-act="demo">✨ Tạo dữ liệu mẫu để xem thử</button><button class="btn ghost" data-act="bulkUser">⇪ Thêm nhân sự hàng loạt</button><button class="btn ghost" data-act="addUser">+ Thêm 1 nhân sự</button></div></div>`:''}
     <div class="sectionT">Đang trong ca (${open.length})</div>
     <div class="chips">${open.length?open.map(s=>{const u=U[s.userId]||{};const late=nowMs-new Date(s.inAt)>maxMs;
-      return `<div class="chip" data-act="viewShift" data-id="${s.id}"><img src="${s.inPhoto||avatar(u)}" alt=""><span><b>${esc(u.name)}</b> <span class="muted sm">vào ${hm(s.inAt)} ${dm(s.inAt)}</span> ${late?'<span class="tag warn">Quên check-out?</span>':''}</span></div>`}).join('')
+      return `<div class="chip" data-act="viewShift" data-id="${s.id}"><img src="${PH['s:'+s.id+':in']||avatar(u)}" data-ph="${s.pin?s.id+'|in':''}" alt=""><span><b>${esc(u.name)}</b> <span class="muted sm">vào ${hm(s.inAt)} ${dm(s.inAt)}</span> ${late?'<span class="tag warn">Quên check-out?</span>':''}</span></div>`}).join('')
       :'<span class="muted">Không có ai đang trong ca.</span>'}</div>
     <div class="sectionT">Lịch sử chấm công</div>
     ${quickBtns('F')}
@@ -676,8 +788,8 @@ async function tabAtt(){
     ${list.length?list.map(s=>{const u=U[s.userId]||{name:'(đã xoá)'};const late=!s.outAt&&nowMs-new Date(s.inAt)>maxMs;
       return `<tr><td><div class="row" style="flex-wrap:nowrap"><img class="avatar" src="${avatar(u)}" alt=""><div><b>${esc(u.name)}</b><div class="muted sm">${esc(u.dept||'')}</div></div></div></td>
       <td>${dmy(s.inAt)}<div class="muted sm">Ca ${shiftInfo(s).ca}</div></td>
-      <td>${s.inPhoto?`<img class="thumb" src="${s.inPhoto}" data-act="viewShift" data-id="${s.id}" alt="">`:''}<b>${hm(s.inAt)}</b></td>
-      <td>${s.outAt?(s.outPhoto?`<img class="thumb" src="${s.outPhoto}" data-act="viewShift" data-id="${s.id}" alt="">`:'')+`<b>${hm(s.outAt)}</b>${ymd(s.outAt)!==ymd(s.inAt)?' <span class="muted sm">('+dm(s.outAt)+')</span>':''}`
+      <td>${s.pin?thumbImg(s,'in'):''}<b>${hm(s.inAt)}</b></td>
+      <td>${s.outAt?(s.pout?thumbImg(s,'out'):'')+`<b>${hm(s.outAt)}</b>${ymd(s.outAt)!==ymd(s.inAt)?' <span class="muted sm">('+dm(s.outAt)+')</span>':''}`
         :`<span class="tag ${late?'warn':'open'}">${late?'Quên check-out?':'Đang làm'}</span>`}
         ${isCapped(s)?` <span class="tag open" title="Ra thực tế ${hm(s.outAt)}, chỉ tính công đến giờ chốt ca">Tính đến ${hm(effOut(s))}</span>`:''}${s.allowOver&&s.outAt?' <span class="tag ok">Duyệt quá giờ</span>':''}
         ${s.editedAt?` <span class="tag edit" title="${esc('Sửa bởi '+s.editedBy+' lúc '+dmy(s.editedAt)+' '+hm(s.editedAt)+': '+(s.editNote||''))}">Đã sửa</span>`:''}${s.manual?' <span class="tag edit">Thủ công</span>':''}</td>
@@ -685,9 +797,11 @@ async function tabAtt(){
       <td style="white-space:nowrap"><button class="btn ghost sm" data-act="viewShift" data-id="${s.id}">Xem</button> <button class="btn ghost sm" data-act="editShift" data-id="${s.id}">Sửa</button> <button class="btn danger sm" data-act="delShift" data-id="${s.id}">Xoá</button></td></tr>`}).join('')
       :'<tr><td colspan="7" class="muted" style="text-align:center;padding:20px">Không có dữ liệu trong khoảng này.</td></tr>'}
     </tbody></table></div>`;
+  fillPhotos($('#tabBody'));
 }
 async function viewShift(id){
-  const s=await DB.get('shifts',id);if(!s)return;const u=(await DB.get('users',s.userId))||{name:'(đã xoá)'};
+  const s=await DB.get('shifts',id);if(!s)return;const u=(await DB.get('users',s.userId).catch(()=>null))||{name:'(đã xoá)'};
+  const ph=await DB.shiftPhotos(id).catch(()=>({}));s.inPhoto=ph.in;s.outPhoto=ph.out;
   const fig=(src,cap)=>`<figure>${src?`<img src="${src}" alt="">`:'<div class="none">Không có ảnh</div>'}<figcaption>${cap}</figcaption></figure>`;
   modal(`<div class="row"><h3 style="margin:0">${esc(u.name)} · ${dmy(s.inAt)}</h3><div class="sp"></div><button class="btn ghost sm" data-x="close">Đóng</button></div>
     <p class="muted sm">${esc(u.dept||'')} · @${esc(u.username||'')} · Ca ${shiftInfo(s).ca} · Số giờ: <b>${s.outAt?fmtHM(shiftMinutes(s)):'đang làm'}</b>${isCapped(s)?` <span class="tag open">Ra ${hm(s.outAt)}, tính đến ${hm(effOut(s))}</span>`:''} · Tiền: <b>${s.outAt?money(shiftMoney(s))+'đ':'–'}</b></p>
@@ -865,8 +979,11 @@ async function editUser(id){
     if((role!=='admin'||!active)&&u.role==='admin'&&!admins.length)return err.textContent='Phải còn ít nhất 1 tài khoản admin đang hoạt động.';
     const rec=Object.assign({},u,{id:id||uid(),name,username,role,active,photo,dept:v('#ud'),rate:+$('#urt',m).value||0,type:$('#ut',m).value,stk:v('#us'),bank:v('#ub'),phone});
     if(!id)rec.createdAt=new Date().toISOString();
-    if(pw){rec.salt=uid();rec.pw=await hashPw(pw,rec.salt);rec.mustChange=rec.id!==ME.id}
-    await DB.put('users',rec);if(rec.id===ME.id)ME=rec;
+    if(pw&&rec.id===ME.id)return err.textContent='Đổi mật khẩu của chính bạn bằng nút 🔑 ở góc trên màn hình.';
+    if(pw){rec._newPw=pw;rec.mustChange=true}
+    $('#usave',m).disabled=true;$('#usave',m).textContent='Đang lưu…';
+    try{await DB.put('users',rec)}catch(x){$('#usave',m).disabled=false;$('#usave',m).textContent='Lưu';return err.textContent='Không lưu được: '+(x.message||x)}
+    if(rec.id===ME.id)ME={...ME,...rec};
     m.close();
     if(pw&&rec.id!==ME.id)modal(`<h3>Đã lưu tài khoản</h3><p>Gửi thông tin này cho <b>${esc(name)}</b>:</p>
       <div class="card" style="font-size:18px">${phone?`Số điện thoại: <b>${fmtPhone(phone)}</b>`:`Tên đăng nhập: <b>${esc(username)}</b>`}<br>Mật khẩu: <b>${esc(pw)}</b></div>
@@ -901,8 +1018,8 @@ async function tabSet(){
   </div>
   <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn" data-act="saveSet">Lưu cài đặt</button></div>
   <div class="card" style="margin-top:16px"><div class="sectionT" style="margin-top:0">Dữ liệu</div>
-    <p class="muted sm">Bản demo lưu dữ liệu ngay trên trình duyệt của máy này. Nên sao lưu định kỳ. Khi chuyển lên máy chủ, file sao lưu dùng để nhập dữ liệu cũ.</p>
-    <div class="row"><button class="btn ghost" data-act="backup">⬇️ Sao lưu (JSON)</button><button class="btn ghost" data-act="restore">⬆️ Khôi phục từ file</button>
+    <p class="muted sm">Dữ liệu lưu trên máy chủ Firebase (Singapore), mọi máy đăng nhập đều thấy như nhau. Có thể tải bản sao lưu về máy (không gồm ảnh) để cất giữ.</p>
+    <div class="row"><button class="btn ghost" data-act="backup">⬇️ Sao lưu (JSON)</button>
     <button class="btn ghost" data-act="demo">✨ Tạo dữ liệu mẫu</button><button class="btn ghost" data-act="rmDemo">🧹 Xoá dữ liệu mẫu</button><div class="sp"></div><button class="btn danger" data-act="wipe">Xoá toàn bộ dữ liệu</button></div>
   </div>`;
 }
@@ -916,19 +1033,11 @@ async function backup(){
   const data={app:'terracotta-chamcong',version:1,exportedAt:new Date().toISOString(),settings:S,users:await DB.all('users'),shifts:await DB.all('shifts'),requests:await DB.all('requests')};
   download(`sao-luu-cham-cong-${today()}.json`,JSON.stringify(data),'application/json');
 }
-function restore(){
-  const i=document.createElement('input');i.type='file';i.accept='application/json,.json';
-  i.onchange=async()=>{try{const d=JSON.parse(await i.files[0].text());if(d.app!=='terracotta-chamcong')throw 0;
-    if(!confirm(`Khôi phục ${d.users.length} tài khoản và ${d.shifts.length} ca làm? Dữ liệu hiện tại sẽ bị thay thế.`))return;
-    await DB.clear('users');await DB.clear('shifts');for(const u of d.users)await DB.put('users',u);for(const s of d.shifts)await DB.put('shifts',s);await DB.clear('requests');for(const r of (d.requests||[]))await DB.put('requests',r);
-    S=Object.assign({},DEFAULT_SETTINGS,d.settings);await DB.put('kv',S);
-    const me=await DB.get('users',ME.id);if(!me||me.role!=='admin'){ACTS.logout();return}
-    toast('Đã khôi phục');renderAdmin()}catch(e){alert('File sao lưu không hợp lệ.')}};
-  i.click();
-}
 async function wipe(){
   if(prompt('Gõ XOA để xoá toàn bộ nhân sự và chấm công (giữ lại tài khoản của bạn):')!=='XOA')return;
-  await DB.clear('shifts');await DB.clear('requests');for(const u of await DB.all('users'))if(u.id!==ME.id)await DB.del('users',u.id);
+  const up={shifts:null,shiftPhoto:null,requests:null};
+  for(const u of await DB.all('users'))if(u.id!==ME.id){up['staff/'+u.id]=null;up['staffPhoto/'+u.id]=null;if(u.uid)up['uids/'+u.uid]=null;for(const k of loginKeys(u))up['login/'+k]=null}
+  await fbDb.ref().update(up);
   toast('Đã xoá dữ liệu');renderAdmin();
 }
 /* Ảnh minh hoạ cho dữ liệu mẫu (không phải ảnh người thật) */
@@ -964,8 +1073,8 @@ async function makeDemo(){
   const forgotDay=addDays(T,-2); // Vũ Đức Tài quên check out từ 2 ngày trước
   let made=0,editedOne=false,manualOne=false,overOne=false;
   for(const [name,un,col,dept,type,rate,bank,[ti,to]] of ppl){
-    const salt=uid(),id=uid(),stk='DEMO'+String(1000+made).slice(-4);made++;
-    await DB.put('users',{id,name,username:un,role:'staff',active:true,salt,pw:await hashPw('123456',salt),mustChange:false,dept,rate,type,bank,stk,phone:'09'+String(10000000+made*1234567).slice(0,8),
+    const id=uid(),stk='DEMO'+String(1000+made).slice(-4);made++;
+    await DB.put('users',{id,name,username:un,role:'staff',active:true,_newPw:'123456',mustChange:false,dept,rate,type,bank,stk,phone:'09'+String(10000000+made*1234567).slice(0,8),
       photo:fakeFace(name,col),createdAt:new Date().toISOString(),demo:true});
     const plan=[];
     for(const d of days){
@@ -1109,8 +1218,7 @@ function bulkModal(){
     for(const [k,x] of items.entries()){
       if(taken.has(x.username)||(x.phone&&tp.has(x.phone)))continue;taken.add(x.username);if(x.phone)tp.add(x.phone);
       b.textContent=`Đang tạo ${k+1}/${items.length}...`;
-      const salt=uid();
-      await DB.put('users',{id:uid(),name:x.name,username:x.username,role:'staff',active:true,salt,pw:await hashPw(x.pw,salt),mustChange:must,
+      await DB.put('users',{id:uid(),name:x.name,username:x.username,role:'staff',active:true,_newPw:x.pw,mustChange:must,
         dept:x.dept,rate:x.rate,type:x.type,stk:x.stk,bank:x.bank,phone:x.phone,photo:null,createdAt:new Date().toISOString()});
       done.push(x);
     }
@@ -1149,7 +1257,7 @@ function bulkResult(done){
 /* ---------- Gắn sự kiện ---------- */
 const ACTS={
   loginMode(){LOGIN_ADMIN=!LOGIN_ADMIN;renderLogin()},
-  logout(){ME=null;STAB='home';SMONTH=null;sessionStorage.removeItem('cc_uid');route()},
+  logout(){if(LIVE){LIVE.off();LIVE=null}fbAuth.signOut().finally(()=>{ME=null;STAB='home';SMONTH=null;TAB='att';route()})},
   stab(d){STAB=d.tab;renderStaff();window.scrollTo(0,0)},
   smonth(d){const [y,m]=SMONTH.split('-').map(Number);const n=new Date(y,m-1+(+d.d),1);SMONTH=ymd(n).slice(0,7);renderStaff()},
   reqProfile(){reqProfile()},reqShift(d){reqShift(d.id)},reqCancel(d){reqCancel(d.id)},
@@ -1164,7 +1272,7 @@ const ACTS={
   payPrint(){printPayroll()},payXlsx(){exportXlsx()},
   addUser(){editUser(null)},editUser(d){editUser(d.id)},
   userHist(d){F={from:quickRange('month')[0],to:today(),user:d.id};TAB='att';renderAdmin()},
-  saveSet(){saveSettings()},backup(){backup()},restore(){restore()},wipe(){wipe()},demo(){makeDemo()},rmDemo(){removeDemo()},bulkUser(){bulkModal()}
+  saveSet(){saveSettings()},backup(){backup()},wipe(){wipe()},demo(){makeDemo()},rmDemo(){removeDemo()},bulkUser(){bulkModal()}
 };
 document.addEventListener('click',e=>{const b=e.target.closest('[data-act]');if(!b)return;const f=ACTS[b.dataset.act];if(f){e.preventDefault();f(b.dataset,b)}});
 if('serviceWorker' in navigator&&location.protocol.startsWith('http'))window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));

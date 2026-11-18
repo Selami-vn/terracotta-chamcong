@@ -26,6 +26,14 @@ App chấm công bằng ảnh cho lao động thời vụ / sinh viên làm thê
 - **Ngoại lệ**: admin mở ca → Sửa → tick "Duyệt tính công quá giờ chốt" (bắt buộc ghi lý do).
 - Mức tiền công chốt theo lúc vào ca; đổi mức lương chỉ áp dụng cho ca sau đó.
 
+## Lưu dữ liệu: Firebase (đang dùng)
+
+- Dữ liệu lưu trên **Firebase Realtime Database** (máy chủ Singapore), dự án `terracotta-chamcong-aae0b`. Mọi máy đăng nhập đều thấy cùng dữ liệu.
+- Mật khẩu do **Firebase Authentication** giữ (mã hoá), app không lưu mật khẩu.
+- Giờ check in / check out do **máy chủ** ghi, chỉnh giờ điện thoại không gian lận được.
+- Quy tắc bảo mật: `firebase/database.rules.json` (đã dán vào Firebase → Realtime Database → Règles). Nhân viên chỉ đọc được dữ liệu của mình; chỉ admin xem và sửa tất cả.
+- Lần đầu mở app sẽ hiện màn **Thiết lập lần đầu** để tạo tài khoản quản trị.
+
 ## Chạy thử bản demo
 
 Mở `index.html` bằng Chrome hoặc Safari (trên máy tính hoặc điện thoại). Đăng nhập lần đầu: bấm **Quản lý đăng nhập tại đây**, nhập `admin` / `admin123`.
