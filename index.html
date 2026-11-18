@@ -321,14 +321,15 @@ async function doLogin(e){
   e.preventDefault();
   const u=$('#lu').value.trim().toLowerCase(),p=$('#lp').value,err=$('#lerr');
   const f=fails[u];
-  if(f&&f.until>Date.now()){err.textContent='Sai quá 5 lần. Thử lại sau '+Math.ceil((f.until-Date.now())/1000)+' giây.';return}
+  if(f&&f.until>Date.now()){err.textContent='Nhập sai 10 lần liên tiếp. Thử lại sau '+Math.ceil((f.until-Date.now())/1000)+' giây.';return}
   if(!LOGIN_ADMIN&&!/^0\d{9}$/.test(u)){err.textContent='Số điện thoại gồm 10 số, bắt đầu bằng 0 (VD: 0905123456).';return}
   const all=await DB.all('users');
   const user=LOGIN_ADMIN?all.find(x=>x.username===u):all.find(x=>x.phone&&normPhone(x.phone)===u);
   if(!user||!user.active||(await hashPw(p,user.salt))!==user.pw){
     const ff=fails[u]=fails[u]||{n:0};ff.n++;
-    if(ff.n>=5){ff.until=Date.now()+60000;ff.n=0}
-    err.textContent=user&&!user.active?'Tài khoản đã bị khoá. Liên hệ quản lý.':LOGIN_ADMIN?'Sai tên đăng nhập hoặc mật khẩu.':'Sai số điện thoại hoặc mật khẩu. Chưa có tài khoản thì nhờ quản lý tạo.';return;
+    if(ff.n>=10){ff.until=Date.now()+60000;ff.n=0}
+    err.textContent=user&&!user.active?'Tài khoản đã bị khoá. Liên hệ quản lý.':LOGIN_ADMIN?'Sai tên đăng nhập hoặc mật khẩu.':'Sai số điện thoại hoặc mật khẩu. Chưa có tài khoản thì nhờ quản lý tạo.';
+    if(ff.n>=7)err.textContent+=' (còn '+(10-ff.n)+' lần thử)';return;
   }
   delete fails[u];FIRST_RUN=false;ME=user;sessionStorage.setItem('cc_uid',user.id);route();
 }
