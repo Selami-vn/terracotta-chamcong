@@ -220,7 +220,8 @@ const clean=o=>JSON.parse(JSON.stringify(o));
 const PH={}; // bộ nhớ tạm ảnh: 'u:sid', 's:id:in', 's:id:out'
 const val=async p=>(await fbDb.ref(p).get()).val();
 const mapObj=o=>o?Object.entries(o).map(([id,v])=>({...v,id})):[];
-const loginKeys=u=>{const a=[];if(u&&u.username)a.push('u-'+u.username);if(u&&u.phone)a.push(normPhone(u.phone));return a};
+const ukey=un=>'u-'+String(un).replace(/\./g,','); // Firebase không cho dấu chấm trong khoá
+const loginKeys=u=>{const a=[];if(u&&u.role==='admin'&&u.username)a.push(ukey(u.username));if(u&&u.phone)a.push(normPhone(u.phone));return a};
 const emailOf=(sid,v)=>sid.toLowerCase()+'.v'+v+MAIL_DOMAIN;
 function fromShift(id,v){const s={...v,id,inAt:isoT(v.inAt),outAt:isoT(v.outAt),editedAt:isoT(v.editedAt),createdAt:isoT(v.createdAt)};
   if(v.orig)s.orig={inAt:isoT(v.orig.inAt),outAt:isoT(v.orig.outAt)};return s}
@@ -381,7 +382,7 @@ function renderSetup(){
     try{
       const sid=uid(),c=await fbAuth.createUserWithEmailAndPassword(emailOf(sid,1),pw);
       await fbDb.ref().update({['staff/'+sid]:{name,username:un,role:'admin',active:true,dept:'Văn phòng',uid:c.user.uid,authV:1,createdAt:new Date().toISOString()},
-        ['uids/'+c.user.uid]:sid,['login/u-'+un]:{sid,v:1},'meta/initialized':true,settings:clean(S)});
+        ['uids/'+c.user.uid]:sid,['login/'+ukey(un)]:{sid,v:1},'meta/initialized':true,settings:clean(S)});
       await loadMe(c.user);toast('Đã tạo tài khoản quản trị');route();
     }catch(x){b.disabled=false;b.textContent='Tạo tài khoản quản trị';err.textContent='Không tạo được: '+(x.message||x)}
   };
@@ -431,7 +432,7 @@ async function doLogin(e){
     if(ff.n>=10){ff.until=Date.now()+60000;ff.n=0}
     err.textContent=msg||(LOGIN_ADMIN?'Sai tên đăng nhập hoặc mật khẩu.':'Sai số điện thoại hoặc mật khẩu. Chưa có tài khoản thì nhờ quản lý tạo.');
     if(ff.n>=7)err.textContent+=' (còn '+(10-ff.n)+' lần thử)'};
-  let L=null;try{L=await val('login/'+(LOGIN_ADMIN?'u-'+u:u))}catch(x){btn.disabled=false;err.textContent='Không kết nối được máy chủ, kiểm tra mạng.';return}
+  let L=null;try{L=await val('login/'+(LOGIN_ADMIN?ukey(u):u))}catch(x){btn.disabled=false;err.textContent='Không kết nối được máy chủ, kiểm tra mạng.';return}
   if(!L)return fail();
   try{await fbAuth.signInWithEmailAndPassword(emailOf(L.sid,L.v),p)}
   catch(x){if(x.code==='auth/network-request-failed'){btn.disabled=false;err.textContent='Không kết nối được máy chủ, kiểm tra mạng.';return}
@@ -601,7 +602,7 @@ function staffPay(mine,reqs){
 function staffMe(reqs){
   const row=(k,v)=>`<div class="irow"><span class="muted">${k}</span><b>${v||'<span class="muted">Chưa có</span>'}</b></div>`;
   const pend=reqs.find(r=>r.type==='profile'&&r.status==='pending');
-  return `<div class="card" style="text-align:center"><img class="avatar" style="width:96px;height:96px" src="${avatar(ME)}" alt=""><div class="b" style="font-size:18px;margin-top:8px">${esc(ME.name)}</div><div class="muted">Đăng nhập: ${ME.phone?fmtPhone(ME.phone):'@'+esc(ME.username)}</div></div>
+  return `<div class="card" style="text-align:center"><img class="avatar" style="width:96px;height:96px" src="${avatar(ME)}" alt=""><div class="b" style="font-size:18px;margin-top:8px">${esc(ME.name)}</div><div class="muted">${ME.role==='admin'?'@'+esc(ME.username):'Đăng nhập: '+fmtPhone(ME.phone||'')}</div></div>
     <div class="card" style="margin-top:12px;padding:6px 16px">
       ${row('Bộ phận',esc(ME.dept))}${row('Loại',ME.type==='TT'?'Thực tập':'Thời vụ')}${row('Tiền công / giờ',money(ME.rate)+'đ')}
       ${row('Số điện thoại',ME.phone?fmtPhone(ME.phone):'')}${row('Số tài khoản',esc(ME.stk))}${row('Ngân hàng',esc(ME.bank))}
@@ -924,7 +925,7 @@ async function tabUsers(){
     <div class="row" style="margin:14px 0"><div class="sectionT" style="margin:0">Tài khoản (${users.length})</div><div class="sp"></div><button class="btn ghost" data-act="bulkUser">⇪ Thêm hàng loạt</button><button class="btn" data-act="addUser">+ Thêm nhân sự</button></div>
     <div class="scroll"><table class="tbl"><thead><tr><th>Nhân sự</th><th>Đăng nhập</th><th>Bộ phận</th><th>Loại</th><th class="r">Tiền công/giờ</th><th>STK · Ngân hàng</th><th>Trạng thái</th><th></th></tr></thead><tbody>
     ${list.map(u=>`<tr><td><div class="row" style="flex-wrap:nowrap"><img class="avatar" src="${avatar(u)}" alt=""><b>${esc(u.name)}</b></div></td>
-      <td>${u.phone?`<b>${fmtPhone(u.phone)}</b><div class="muted sm">@${esc(u.username)}</div>`:`@${esc(u.username)}${u.role!=='admin'?' <span class="tag warn">Thiếu SĐT</span>':''}`}${u.role==='admin'?' <span class="tag edit">Admin</span>':''}</td><td>${esc(u.dept||'')}</td>
+      <td>${u.role==='admin'?`@${esc(u.username)}${u.phone?'<div class="muted sm">'+fmtPhone(u.phone)+'</div>':''}`:(u.phone?`<b>${fmtPhone(u.phone)}</b>`:'<span class="tag warn">Thiếu SĐT</span>')}${u.role==='admin'?' <span class="tag edit">Admin</span>':''}</td><td>${esc(u.dept||'')}</td>
       <td>${u.role==='admin'?'–':u.type==='TT'?'Thực tập':'Thời vụ'}</td><td class="r">${u.role==='admin'?'–':money(u.rate)}</td>
       <td>${[u.stk,u.bank].filter(Boolean).map(esc).join(' · ')}</td>
       <td>${!u.active?'<span class="tag off">Đã khoá</span>':openIds.has(u.id)?'<span class="tag open">Đang trong ca</span>':'<span class="tag ok">Hoạt động</span>'}${u.photo||u.role==='admin'?'':' <span class="tag warn">Thiếu ảnh gốc</span>'}</td>
@@ -947,7 +948,7 @@ async function editUser(id){
       <div><label>Loại</label><select id="ut"><option value="TV" ${u.type!=='TT'?'selected':''}>TV – Thời vụ</option><option value="TT" ${u.type==='TT'?'selected':''}>TT – Thực tập</option></select></div>
       <div><label>Số tài khoản</label><input id="us" value="${esc(u.stk||'')}" inputmode="numeric"></div>
       <div><label>Ngân hàng</label><input id="ub" value="${esc(u.bank||'')}"></div>
-      <div><label>Tên đăng nhập (tuỳ chọn)</label><input id="uu" value="${esc(u.username||'')}" autocapitalize="none" placeholder="Để trống app tự tạo"></div>
+      <div id="uuWrap" ${u.role==='admin'?'':'hidden'}><label>Tên đăng nhập quản lý</label><input id="uu" value="${esc(u.username||'')}" autocapitalize="none" placeholder="vd: admin2"></div>
     </div>
     <label>${id?'Mật khẩu mới (để trống nếu không đổi)':'Mật khẩu *'}</label>
     <div class="row" style="flex-wrap:nowrap"><input id="up" autocomplete="new-password" placeholder="ít nhất 6 ký tự"><button class="btn ghost sm" id="ugen">Tạo mật khẩu mới</button></div>
@@ -957,6 +958,7 @@ async function editUser(id){
   $('#usnap',m).onclick=async()=>{const r=await openCamera({title:'Ảnh gốc hồ sơ',allowUpload:true});if(r){photo=r.img;$('#uph',m).src=photo}};
   if($('#urm',m))$('#urm',m).onclick=()=>{photo=null;$('#uph',m).src=avatar({name:$('#un',m).value})};
   $('#ugen',m).onclick=()=>{$('#up',m).value=randPw()};
+  $('#ur',m).onchange=()=>{$('#uuWrap',m).hidden=$('#ur',m).value!=='admin'};
   if($('#udel',m))$('#udel',m).onclick=async()=>{
     const n=(await DB.all('shifts')).filter(s=>s.userId===id).length;
     if(n){alert(`Nhân sự này có ${n} ca chấm công. Hãy khoá tài khoản (bỏ chọn "Đang hoạt động") thay vì xoá để giữ lịch sử lương.`);return}
@@ -970,9 +972,9 @@ async function editUser(id){
     if(phone&&!validPhone(phone))return err.textContent='Số điện thoại phải gồm 10 số, bắt đầu bằng 0 (VD: 0905123456).';
     const all=await DB.all('users');
     const dupP=phone&&all.find(x=>x.id!==id&&normPhone(x.phone)===phone);if(dupP)return err.textContent='Số điện thoại này đã dùng cho '+dupP.name+'.';
-    if(!username)username=makeUsername(name,new Set(all.filter(x=>x.id!==id).map(x=>x.username)));
-    if(!/^[a-z0-9._-]{3,30}$/.test(username))return err.textContent='Tên đăng nhập 3–30 ký tự, chỉ gồm chữ không dấu, số, dấu chấm, gạch.';
-    if(all.some(x=>x.username===username&&x.id!==id))return err.textContent='Tên đăng nhập đã tồn tại.';
+    if(role!=='admin')username=u.username||makeUsername(name,new Set(all.filter(x=>x.id!==id).map(x=>x.username))); // mã nội bộ, nhân viên không cần biết
+    if(role==='admin'&&!/^[a-z0-9._-]{3,30}$/.test(username))return err.textContent='Tên đăng nhập quản lý 3–30 ký tự, chữ không dấu, số, dấu chấm, gạch.';
+    if(all.some(x=>x.username===username&&x.id!==id))return err.textContent=role==='admin'?'Tên đăng nhập đã tồn tại.':'Trùng mã nội bộ, hãy sửa họ tên một chút rồi lưu lại.';
     if(!id&&!pw)return err.textContent='Nhập mật khẩu cho tài khoản mới.';
     if(pw&&pw.length<6)return err.textContent='Mật khẩu ít nhất 6 ký tự.';
     const admins=all.filter(x=>x.role==='admin'&&x.active&&x.id!==id);
@@ -1125,7 +1127,7 @@ async function removeDemo(){
 }
 
 /* ---------- THÊM NHÂN SỰ HÀNG LOẠT ---------- */
-const BULK_COLS=['Họ và tên','Số điện thoại','Bộ phận','Tiền công/giờ','Loại (TV/TT)','STK','Ngân hàng','Mật khẩu (tuỳ chọn)','Tên đăng nhập (tuỳ chọn)'];
+const BULK_COLS=['Họ và tên','Số điện thoại','Bộ phận','Tiền công/giờ','Loại (TV/TT)','STK','Ngân hàng','Mật khẩu (tuỳ chọn)'];
 const unaccent=s=>String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/đ/g,'d').replace(/Đ/g,'D');
 function makeUsername(name,taken){
   const p=unaccent(name).toLowerCase().replace(/[^a-z\s]/g,'').trim().split(/\s+/).filter(Boolean);
@@ -1178,13 +1180,13 @@ async function bulkPreview(m){
     if(pw&&pw.length<6)it.err='Mật khẩu dưới 6 ký tự';
     if(it.phone&&!validPhone(it.phone))it.err='SĐT không hợp lệ';else if(it.phone&&phones.has(it.phone))it.err='Trùng SĐT';else if(it.phone)phones.add(it.phone);
     it.pw=pw||randPw();
-    if(!it.err&&!it.phone)it.warn='Chưa có SĐT, đăng nhập bằng @'+it.username;else if(!it.err&&all.some(u=>u.name.toLowerCase()===it.name.toLowerCase()))it.warn='Đã có người trùng tên';
+    if(!it.err&&!it.phone)it.err='Thiếu SĐT';else if(!it.err&&all.some(u=>u.name.toLowerCase()===it.name.toLowerCase()))it.warn='Đã có người trùng tên';
     out.push(it);
   }
   m.items=out;
   const ok=out.filter(x=>!x.err).length;
   $('#bprev',m).innerHTML=out.length?`<div class="scroll" style="max-height:300px"><table class="tbl"><thead><tr><th>#</th><th>Họ và tên</th><th>SĐT đăng nhập</th><th>Bộ phận</th><th class="r">Tiền/giờ</th><th>Loại</th><th>STK · Ngân hàng</th><th>Kiểm tra</th></tr></thead><tbody>
-    ${out.map((x,i)=>`<tr><td>${i+1}</td><td><b>${esc(x.name)}</b></td><td>${x.phone?fmtPhone(x.phone):'<span class="muted">@'+esc(x.username||'')+'</span>'}</td><td>${esc(x.dept)}</td><td class="r">${money(x.rate)}</td><td>${x.type}</td><td>${esc([x.stk,x.bank].filter(Boolean).join(' · '))}</td>
+    ${out.map((x,i)=>`<tr><td>${i+1}</td><td><b>${esc(x.name)}</b></td><td>${x.phone?fmtPhone(x.phone):''}</td><td>${esc(x.dept)}</td><td class="r">${money(x.rate)}</td><td>${x.type}</td><td>${esc([x.stk,x.bank].filter(Boolean).join(' · '))}</td>
     <td>${x.err?`<span class="tag warn">${esc(x.err)}</span>`:x.warn?`<span class="tag open">${esc(x.warn)}</span>`:'<span class="tag ok">OK</span>'}</td></tr>`).join('')}</tbody></table></div>`
     :'<p class="muted">Chưa có dòng nào.</p>';
   const b=$('#bgo',m);b.disabled=!ok;b.textContent=`Tạo ${ok} tài khoản`;
@@ -1226,7 +1228,7 @@ function bulkModal(){
   };
 }
 async function bulkTemplate(){
-  const rows=[BULK_COLS,['Võ Mai Thảo','0905123456','Nhà Hàng',35000,'TV','','MBbank','',''],['Nguyễn Văn A','0912345678','Buồng phòng',35000,'TT','','Vietcombank','','']];
+  const rows=[BULK_COLS,['Võ Mai Thảo','0905123456','Nhà Hàng',35000,'TV','','MBbank',''],['Nguyễn Văn A','0912345678','Buồng phòng',35000,'TT','','Vietcombank','']];
   try{if(!window.XLSX)await loadScript('https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js');
     const ws=XLSX.utils.aoa_to_sheet(rows);ws['!cols']=[{wch:24},{wch:14},{wch:14},{wch:14},{wch:12},{wch:16},{wch:14},{wch:18},{wch:22}];
     const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Nhan su');XLSX.writeFile(wb,'mau-them-nhan-su.xlsx');
@@ -1236,7 +1238,7 @@ function slipsHTML(list){
   return `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8mm;font-family:Arial,sans-serif">${list.map(x=>`
     <div style="border:1px dashed #999;padding:5mm;break-inside:avoid;font-size:12px">
       <img src="${LOGO}" style="height:28px"><div style="font-weight:700;margin:6px 0 2px;font-size:14px">${esc(x.name)}</div>
-      <div>${esc(x.dept||'')}</div><div style="margin-top:6px">${x.phone?'Số điện thoại':'Tên đăng nhập'}: <b style="font-size:15px">${x.phone?fmtPhone(x.phone):esc(x.username)}</b></div>
+      <div>${esc(x.dept||'')}</div><div style="margin-top:6px">Số điện thoại: <b style="font-size:15px">${fmtPhone(x.phone)}</b></div>
       <div>Mật khẩu: <b style="font-size:15px">${esc(x.pw)}</b></div>
       <div style="margin-top:6px;color:#555;font-size:11px">Mở link chấm công quản lý gửi, đăng nhập và đổi mật khẩu ngay lần đầu. Không đưa mật khẩu cho người khác.</div></div>`).join('')}</div>`;
 }
@@ -1244,11 +1246,11 @@ function bulkResult(done){
   if(!done.length){toast('Không tạo được tài khoản nào');return}
   const m=modal(`<div class="row"><h3 style="margin:0">Đã tạo ${done.length} tài khoản</h3><div class="sp"></div><button class="btn ghost sm" data-x="close">Đóng</button></div>
     <p class="muted sm">Mật khẩu chỉ hiện <b>một lần này</b>. Tải danh sách hoặc in phiếu đưa cho từng người ngay bây giờ.</p>
-    <div class="scroll" style="max-height:340px"><table class="tbl"><thead><tr><th>#</th><th>Họ và tên</th><th>Đăng nhập bằng</th><th>Mật khẩu</th></tr></thead><tbody>
-    ${done.map((x,i)=>`<tr><td>${i+1}</td><td>${esc(x.name)}</td><td><b>${x.phone?fmtPhone(x.phone):'@'+esc(x.username)}</b></td><td><b>${esc(x.pw)}</b></td></tr>`).join('')}</tbody></table></div>
+    <div class="scroll" style="max-height:340px"><table class="tbl"><thead><tr><th>#</th><th>Họ và tên</th><th>SĐT đăng nhập</th><th>Mật khẩu</th></tr></thead><tbody>
+    ${done.map((x,i)=>`<tr><td>${i+1}</td><td>${esc(x.name)}</td><td><b>${fmtPhone(x.phone)}</b></td><td><b>${esc(x.pw)}</b></td></tr>`).join('')}</tbody></table></div>
     <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn ghost" id="rslip">🖨️ In phiếu phát cho nhân sự</button><button class="btn green" id="rxl">⬇️ Tải danh sách Excel</button></div>`,{wide:true,lock:true});
   $('#rslip',m).onclick=()=>{$('#printArea').innerHTML=slipsHTML(done);setTimeout(()=>window.print(),200)};
-  $('#rxl',m).onclick=async()=>{const rows=[['Họ và tên','Bộ phận','Số điện thoại (đăng nhập)','Tên đăng nhập','Mật khẩu'],...done.map(x=>[x.name,x.dept,x.phone,x.username,x.pw])];
+  $('#rxl',m).onclick=async()=>{const rows=[['Họ và tên','Bộ phận','Số điện thoại (đăng nhập)','Mật khẩu'],...done.map(x=>[x.name,x.dept,x.phone,x.pw])];
     try{if(!window.XLSX)await loadScript('https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js');
       const ws=XLSX.utils.aoa_to_sheet(rows);ws['!cols']=[{wch:24},{wch:14},{wch:18},{wch:12}];const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Tai khoan');XLSX.writeFile(wb,`tai-khoan-nhan-su-${today()}.xlsx`)}
     catch(e){download(`tai-khoan-nhan-su-${today()}.csv`,'﻿'+rows.map(r=>r.join(',')).join('\n'),'text/csv')}};
