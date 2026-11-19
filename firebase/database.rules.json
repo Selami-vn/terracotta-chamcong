@@ -1,7 +1,7 @@
 {
   "rules": {
-    ".read": "auth != null && root.child('staff').child(root.child('uids').child(auth.uid).val()+'').child('role').val() === 'admin' && root.child('staff').child(root.child('uids').child(auth.uid).val()+'').child('active').val() === true",
-    ".write": "auth != null && root.child('staff').child(root.child('uids').child(auth.uid).val()+'').child('role').val() === 'admin' && root.child('staff').child(root.child('uids').child(auth.uid).val()+'').child('active').val() === true",
+    ".read": "(auth != null && root.child('staff').child(root.child('uids').child(auth.uid).val()+'').child('active').val() === true && (root.child('staff').child(root.child('uids').child(auth.uid).val()+'').child('role').val() === 'admin'))",
+    ".write": "(auth != null && root.child('staff').child(root.child('uids').child(auth.uid).val()+'').child('active').val() === true && (root.child('staff').child(root.child('uids').child(auth.uid).val()+'').child('role').val() === 'admin'))",
     "meta": {
       ".read": true,
       ".write": "auth != null && !root.child('staff').exists()"
@@ -13,37 +13,40 @@
     "login": {
       "$key": {
         ".read": true,
-        ".write": "auth != null && !root.child('staff').exists()"
+        ".write": "(auth != null && !root.child('staff').exists()) || ((auth != null && root.child('staff').child(root.child('uids').child(auth.uid).val()+'').child('active').val() === true && (root.child('staff').child(root.child('uids').child(auth.uid).val()+'').child('role').val() === 'hr_head')) && (!newData.exists() || newData.parent().parent().child('staff').child(newData.child('sid').val()+'').child('role').val() === 'staff') && (!data.exists() || root.child('staff').child(data.child('sid').val()+'').child('role').val() === 'staff'))"
       }
     },
     "uids": {
       "$uid": {
         ".read": "auth != null && auth.uid === $uid",
-        ".write": "auth != null && auth.uid === $uid && !root.child('staff').exists()"
+        ".write": "(auth != null && auth.uid === $uid && !root.child('staff').exists()) || ((auth != null && root.child('staff').child(root.child('uids').child(auth.uid).val()+'').child('active').val() === true && (root.child('staff').child(root.child('uids').child(auth.uid).val()+'').child('role').val() === 'hr_head')) && (!newData.exists() || newData.parent().parent().child('staff').child(newData.val()+'').child('role').val() === 'staff') && (!data.exists() || root.child('staff').child(data.val()+'').child('role').val() === 'staff'))"
       }
     },
     "staff": {
+      ".read": "(auth != null && root.child('staff').child(root.child('uids').child(auth.uid).val()+'').child('active').val() === true && (root.child('staff').child(root.child('uids').child(auth.uid).val()+'').child('role').val() === 'admin' || root.child('staff').child(root.child('uids').child(auth.uid).val()+'').child('role').val() === 'hr_head' || root.child('staff').child(root.child('uids').child(auth.uid).val()+'').child('role').val() === 'hr' || root.child('staff').child(root.child('uids').child(auth.uid).val()+'').child('role').val() === 'acc_head'))",
       "$sid": {
         ".read": "auth != null && root.child('uids').child(auth.uid).val() === $sid",
-        ".write": "auth != null && !root.child('staff').exists() && newData.child('role').val() === 'admin' && newData.parent().parent().child('uids').child(auth.uid).val() === $sid",
+        ".write": "(auth != null && !root.child('staff').exists() && newData.child('role').val() === 'admin' && newData.parent().parent().child('uids').child(auth.uid).val() === $sid) || ((auth != null && root.child('staff').child(root.child('uids').child(auth.uid).val()+'').child('active').val() === true && (root.child('staff').child(root.child('uids').child(auth.uid).val()+'').child('role').val() === 'hr_head')) && (!data.exists() || data.child('role').val() === 'staff') && (!newData.exists() || newData.child('role').val() === 'staff'))",
         "mustChange": {
           ".write": "auth != null && root.child('uids').child(auth.uid).val() === $sid && newData.val() === false"
         }
       }
     },
     "staffPhoto": {
+      ".read": "(auth != null && root.child('staff').child(root.child('uids').child(auth.uid).val()+'').child('active').val() === true && (root.child('staff').child(root.child('uids').child(auth.uid).val()+'').child('role').val() === 'admin' || root.child('staff').child(root.child('uids').child(auth.uid).val()+'').child('role').val() === 'hr_head' || root.child('staff').child(root.child('uids').child(auth.uid).val()+'').child('role').val() === 'hr' || root.child('staff').child(root.child('uids').child(auth.uid).val()+'').child('role').val() === 'acc_head'))",
       "$sid": {
-        ".read": "auth != null && root.child('uids').child(auth.uid).val() === $sid"
+        ".read": "auth != null && root.child('uids').child(auth.uid).val() === $sid",
+        ".write": "(auth != null && root.child('staff').child(root.child('uids').child(auth.uid).val()+'').child('active').val() === true && (root.child('staff').child(root.child('uids').child(auth.uid).val()+'').child('role').val() === 'hr_head')) && (root.child('staff').child($sid).child('role').val() === 'staff' || newData.parent().parent().child('staff').child($sid).child('role').val() === 'staff')"
       }
     },
     "shifts": {
       ".indexOn": [
         "userId"
       ],
-      ".read": "auth != null && query.orderByChild === 'userId' && query.equalTo === root.child('uids').child(auth.uid).val()",
+      ".read": "(auth != null && query.orderByChild === 'userId' && query.equalTo === root.child('uids').child(auth.uid).val()) || (auth != null && root.child('staff').child(root.child('uids').child(auth.uid).val()+'').child('active').val() === true && (root.child('staff').child(root.child('uids').child(auth.uid).val()+'').child('role').val() === 'admin' || root.child('staff').child(root.child('uids').child(auth.uid).val()+'').child('role').val() === 'hr_head' || root.child('staff').child(root.child('uids').child(auth.uid).val()+'').child('role').val() === 'hr' || root.child('staff').child(root.child('uids').child(auth.uid).val()+'').child('role').val() === 'acc_head'))",
       "$id": {
         ".read": "auth != null && data.child('userId').val() === root.child('uids').child(auth.uid).val()",
-        ".write": "auth != null && root.child('staff').child(root.child('uids').child(auth.uid).val()+'').child('active').val() === true && !data.exists() && newData.child('userId').val() === root.child('uids').child(auth.uid).val() && newData.child('inAt').val() === now && !newData.child('outAt').exists() && !newData.child('allowOver').exists() && !newData.child('editedAt').exists() && !newData.child('manual').exists() && newData.child('rate').val() === root.child('staff').child(root.child('uids').child(auth.uid).val()+'').child('rate').val()",
+        ".write": "(auth != null && root.child('staff').child(root.child('uids').child(auth.uid).val()+'').child('active').val() === true && !data.exists() && newData.child('userId').val() === root.child('uids').child(auth.uid).val() && newData.child('inAt').val() === now && !newData.child('outAt').exists() && !newData.child('allowOver').exists() && !newData.child('editedAt').exists() && !newData.child('manual').exists() && newData.child('rate').val() === root.child('staff').child(root.child('uids').child(auth.uid).val()+'').child('rate').val()) || (auth != null && root.child('staff').child(root.child('uids').child(auth.uid).val()+'').child('active').val() === true && (root.child('staff').child(root.child('uids').child(auth.uid).val()+'').child('role').val() === 'acc_head'))",
         "outAt": {
           ".write": "auth != null && root.child('staff').child(root.child('uids').child(auth.uid).val()+'').child('active').val() === true && data.parent().child('userId').val() === root.child('uids').child(auth.uid).val() && !data.exists() && newData.val() === now"
         },
@@ -56,8 +59,10 @@
       }
     },
     "shiftPhoto": {
+      ".read": "(auth != null && root.child('staff').child(root.child('uids').child(auth.uid).val()+'').child('active').val() === true && (root.child('staff').child(root.child('uids').child(auth.uid).val()+'').child('role').val() === 'admin' || root.child('staff').child(root.child('uids').child(auth.uid).val()+'').child('role').val() === 'hr_head' || root.child('staff').child(root.child('uids').child(auth.uid).val()+'').child('role').val() === 'hr' || root.child('staff').child(root.child('uids').child(auth.uid).val()+'').child('role').val() === 'acc_head'))",
       "$id": {
         ".read": "auth != null && root.child('shifts').child($id).child('userId').val() === root.child('uids').child(auth.uid).val()",
+        ".write": "(auth != null && root.child('staff').child(root.child('uids').child(auth.uid).val()+'').child('active').val() === true && (root.child('staff').child(root.child('uids').child(auth.uid).val()+'').child('role').val() === 'acc_head'))",
         "in": {
           ".write": "auth != null && root.child('staff').child(root.child('uids').child(auth.uid).val()+'').child('active').val() === true && !data.exists() && newData.parent().parent().parent().child('shifts').child($id).child('userId').val() === root.child('uids').child(auth.uid).val()"
         },
@@ -70,10 +75,10 @@
       ".indexOn": [
         "userId"
       ],
-      ".read": "auth != null && query.orderByChild === 'userId' && query.equalTo === root.child('uids').child(auth.uid).val()",
+      ".read": "(auth != null && query.orderByChild === 'userId' && query.equalTo === root.child('uids').child(auth.uid).val()) || (auth != null && root.child('staff').child(root.child('uids').child(auth.uid).val()+'').child('active').val() === true && (root.child('staff').child(root.child('uids').child(auth.uid).val()+'').child('role').val() === 'admin' || root.child('staff').child(root.child('uids').child(auth.uid).val()+'').child('role').val() === 'hr_head' || root.child('staff').child(root.child('uids').child(auth.uid).val()+'').child('role').val() === 'hr' || root.child('staff').child(root.child('uids').child(auth.uid).val()+'').child('role').val() === 'acc_head'))",
       "$id": {
         ".read": "auth != null && data.child('userId').val() === root.child('uids').child(auth.uid).val()",
-        ".write": "auth != null && ((!data.exists() && newData.child('userId').val() === root.child('uids').child(auth.uid).val() && newData.child('status').val() === 'pending') || (data.child('userId').val() === root.child('uids').child(auth.uid).val() && data.child('status').val() === 'pending' && !newData.exists()))"
+        ".write": "(auth != null && ((!data.exists() && newData.child('userId').val() === root.child('uids').child(auth.uid).val() && newData.child('status').val() === 'pending') || (data.child('userId').val() === root.child('uids').child(auth.uid).val() && data.child('status').val() === 'pending' && !newData.exists()))) || ((auth != null && root.child('staff').child(root.child('uids').child(auth.uid).val()+'').child('active').val() === true && (root.child('staff').child(root.child('uids').child(auth.uid).val()+'').child('role').val() === 'acc_head')) && data.child('type').val() === 'shift' && newData.child('type').val() === 'shift') || ((auth != null && root.child('staff').child(root.child('uids').child(auth.uid).val()+'').child('active').val() === true && (root.child('staff').child(root.child('uids').child(auth.uid).val()+'').child('role').val() === 'hr_head')) && data.child('type').val() === 'profile' && newData.child('type').val() === 'profile')"
       }
     }
   }
