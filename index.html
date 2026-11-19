@@ -235,7 +235,6 @@ const CAN={
   editUser:u=>roleIs('admin')||(roleIs('hr_head')&&(!u||u.role==='staff')),
   decide:r=>roleIs('admin')||(r.type==='shift'?roleIs('acc_head'):roleIs('hr_head')),
 };
-const nextCode=users=>{const n=Math.max(0,...users.map(u=>/^TV(\d+)$/i.exec(u.code||'')).filter(Boolean).map(m=>+m[1]));return 'TV'+String(n+1).padStart(3,'0')};
 const loginKeys=u=>{const a=[];if(u&&isMgr(u)&&u.username)a.push(ukey(u.username));if(u&&u.phone)a.push(normPhone(u.phone));return a};
 const emailOf=(sid,v)=>sid.toLowerCase()+'.v'+v+MAIL_DOMAIN;
 function fromShift(id,v){const s={...v,id,inAt:isoT(v.inAt),outAt:isoT(v.outAt),editedAt:isoT(v.editedAt),createdAt:isoT(v.createdAt)};
@@ -422,21 +421,21 @@ function renderSetup(){
     <img src="${LOGO}" alt="Terracotta Hotel & Resort"><h1>Thiết lập lần đầu</h1>
     <p class="muted sm" style="text-align:center">Tạo tài khoản quản trị để quản lý chấm công. Chỉ làm một lần.</p>
     <label>Họ và tên</label><input id="su_n" value="Quản trị viên" required>
-    <label>Tên đăng nhập quản lý</label><input id="su_u" value="admin" autocapitalize="none" required>
+    <label>Số điện thoại (dùng để đăng nhập)</label><input id="su_ph" type="tel" inputmode="numeric" maxlength="10" placeholder="VD: 0905123456" required>
     <label>Mật khẩu (ít nhất 6 ký tự)</label><input id="su_p" type="password" autocomplete="new-password" required>
     <label>Nhập lại mật khẩu</label><input id="su_p2" type="password" autocomplete="new-password" required>
     <div class="err" id="su_e"></div><button class="btn" style="width:100%">Tạo tài khoản quản trị</button></form></div>`;
   $('#setupForm').onsubmit=async e=>{
     e.preventDefault();const v=x=>$(x).value.trim(),err=$('#su_e'),b=e.target.querySelector('button');
-    const name=v('#su_n'),un=v('#su_u').toLowerCase(),pw=$('#su_p').value;
-    if(!/^[a-z0-9._-]{3,30}$/.test(un))return err.textContent='Tên đăng nhập 3–30 ký tự, chữ không dấu, số, dấu chấm, gạch.';
+    const name=v('#su_n'),un='admin',phone=normPhone(v('#su_ph')),pw=$('#su_p').value;
+    if(!validPhone(phone))return err.textContent='Số điện thoại phải gồm 10 số, bắt đầu bằng 0.';
     if(pw.length<6)return err.textContent='Mật khẩu ít nhất 6 ký tự.';
     if(pw!==$('#su_p2').value)return err.textContent='Hai lần nhập mật khẩu không khớp.';
     b.disabled=true;b.textContent='Đang tạo…';
     try{
       const sid=uid(),c=await fbAuth.createUserWithEmailAndPassword(emailOf(sid,1),pw);
-      await fbDb.ref().update({['staff/'+sid]:{name,username:un,role:'admin',active:true,dept:'Văn phòng',uid:c.user.uid,authV:1,createdAt:new Date().toISOString()},
-        ['uids/'+c.user.uid]:sid,['login/'+ukey(un)]:{sid,v:1},'meta/initialized':true,settings:clean(S)});
+      await fbDb.ref().update({['staff/'+sid]:{name,username:un,phone,role:'admin',active:true,dept:'Văn phòng',uid:c.user.uid,authV:1,createdAt:new Date().toISOString()},
+        ['uids/'+c.user.uid]:sid,['login/'+ukey(un)]:{sid,v:1},['login/'+phone]:{sid,v:1},'meta/initialized':true,settings:clean(S)});
       await loadMe(c.user);toast('Đã tạo tài khoản quản trị');route();
     }catch(x){b.disabled=false;b.textContent='Tạo tài khoản quản trị';err.textContent='Không tạo được: '+(x.message||x)}
   };
@@ -462,13 +461,11 @@ function renderLogin(){
     <img src="${LOGO}" alt="Terracotta Hotel & Resort">
     <h1>Chấm công nhân sự thời vụ</h1>
     <div class="muted sm" style="text-align:center">${esc(S.company)}</div>
-    <label id="lul">${LOGIN_ADMIN?'Tên đăng nhập quản lý':'Số điện thoại'}</label>
-    ${LOGIN_ADMIN?'<input id="lu" autocomplete="username" autocapitalize="none" required>'
-      :'<input id="lu" type="tel" inputmode="numeric" pattern="0[0-9]{9}" maxlength="10" autocomplete="username" placeholder="VD: 0905123456" required>'}
+    <label id="lul">Số điện thoại</label>
+    <input id="lu" type="tel" inputmode="numeric" pattern="0[0-9]{9}" maxlength="10" autocomplete="username" placeholder="VD: 0905123456" required>
     <label>Mật khẩu</label><input id="lp" type="password" autocomplete="current-password" required>
     <div class="err" id="lerr"></div>
     <button class="btn" style="width:100%;margin-top:6px">Đăng nhập</button>
-    <button type="button" class="btn ghost sm" style="display:block;margin:10px auto 0;border:0" data-act="loginMode">${LOGIN_ADMIN?'← Nhân viên đăng nhập bằng số điện thoại':'Quản lý đăng nhập tại đây'}</button>
     ${isStandalone()?'':'<button type="button" class="btn ghost" style="width:100%;margin-top:10px" data-act="install">📲 Cài app vào điện thoại</button>'}
   </form></div>`;
   $('#loginForm').onsubmit=doLogin;
@@ -658,7 +655,7 @@ function staffMe(reqs){
   const pend=reqs.find(r=>r.type==='profile'&&r.status==='pending');
   return `<div class="card" style="text-align:center"><img class="avatar" style="width:96px;height:96px" src="${avatar(ME)}" alt=""><div class="b" style="font-size:18px;margin-top:8px">${esc(ME.name)}</div><div class="muted">${ME.role==='admin'?'@'+esc(ME.username):'Đăng nhập: '+fmtPhone(ME.phone||'')}</div></div>
     <div class="card" style="margin-top:12px;padding:6px 16px">
-      ${row('Mã nhân viên',esc(ME.code||''))}${row('Bộ phận',esc(ME.dept))}${row('Loại',ME.type==='TT'?'Thực tập':'Thời vụ')}${row('Tiền công / giờ',money(ME.rate)+'đ')}
+      ${row('Bộ phận',esc(ME.dept))}${row('Loại',ME.type==='TT'?'Thực tập':'Thời vụ')}${row('Tiền công / giờ',money(ME.rate)+'đ')}
       ${row('Số điện thoại',ME.phone?fmtPhone(ME.phone):'')}${row('Số tài khoản',esc(ME.stk))}${row('Ngân hàng',esc(ME.bank))}
     </div>
     ${pend?`<div class="hint" style="margin-top:12px">Bạn có yêu cầu chỉnh sửa đang chờ quản lý duyệt. <button class="btn danger sm" data-act="reqCancel" data-id="${pend.id}">Huỷ yêu cầu</button></div>`
@@ -847,7 +844,7 @@ async function tabAtt(){
       <div class="stat"><div class="k">Tổng tiền</div><div class="v">${money(tM)}đ</div></div></div>
     <div class="scroll"><table class="tbl"><thead><tr><th>Nhân sự</th><th>Ngày</th><th>Check in</th><th>Check out</th><th class="r">Số giờ</th><th class="r">Tiền công</th><th></th></tr></thead><tbody>
     ${list.length?list.map(s=>{const u=U[s.userId]||{name:'(đã xoá)'};const late=!s.outAt&&nowMs-new Date(s.inAt)>maxMs;
-      return `<tr><td><div class="row" style="flex-wrap:nowrap"><img class="avatar" src="${avatar(u)}" alt=""><div><b>${esc(u.name)}</b><div class="muted sm">${u.code?esc(u.code)+' · ':''}${esc(u.dept||'')}</div></div></div></td>
+      return `<tr><td><div class="row" style="flex-wrap:nowrap"><img class="avatar" src="${avatar(u)}" alt=""><div><b>${esc(u.name)}</b><div class="muted sm">${esc(u.dept||'')}</div></div></div></td>
       <td>${dmy(s.inAt)}<div class="muted sm">Ca ${shiftInfo(s).ca}</div></td>
       <td>${s.pin?thumbImg(s,'in'):''}<b>${hm(s.inAt)}</b>${s.manual?'':'<div>'+geoTag(s.inGeo)+'</div>'}</td>
       <td>${s.outAt?(s.pout?thumbImg(s,'out'):'')+`<b>${hm(s.outAt)}</b>${ymd(s.outAt)!==ymd(s.inAt)?' <span class="muted sm">('+dm(s.outAt)+')</span>':''}`
@@ -925,13 +922,13 @@ function payrollHTML(d){
     <div class="hd"><img src="${LOGO}" alt=""><div class="co"><b>${esc(S.company)}</b><br>${esc(S.addr1)}<br>${esc(S.addr2)}</div></div>
     <h2>${esc(S.title)}</h2><div class="sub">${d.range}</div>
     <table><thead>
-      <tr><th rowspan="2">Stt</th><th rowspan="2">Mã NV</th><th rowspan="2">Họ và tên</th><th rowspan="2">Bộ phận</th><th rowspan="2">Ngày</th><th rowspan="2">Giờ vào – ra</th><th rowspan="2">Số giờ (h)</th><th rowspan="2">Tiền công giờ</th><th rowspan="2">Tiền công</th><th colspan="2">Ghi chú</th><th rowspan="2">STK</th><th rowspan="2">Ngân hàng</th></tr>
+      <tr><th rowspan="2">Stt</th><th rowspan="2">Họ và tên</th><th rowspan="2">Bộ phận</th><th rowspan="2">Ngày</th><th rowspan="2">Giờ vào – ra</th><th rowspan="2">Số giờ (h)</th><th rowspan="2">Tiền công giờ</th><th rowspan="2">Tiền công</th><th colspan="2">Ghi chú</th><th rowspan="2">STK</th><th rowspan="2">Ngân hàng</th></tr>
       <tr><th>TV</th><th>TT</th></tr></thead><tbody>
-      ${d.rows.length?d.rows.map((r,i)=>`<tr><td class="c">${i+1}</td><td class="c">${esc(r.u.code||'')}</td><td>${esc(r.u.name)}</td><td class="c">${esc(r.u.dept||'')}</td><td class="c">${d.range}</td>
+      ${d.rows.length?d.rows.map((r,i)=>`<tr><td class="c">${i+1}</td><td>${esc(r.u.name)}</td><td class="c">${esc(r.u.dept||'')}</td><td class="c">${d.range}</td>
         <td class="det">${r.det.join('<br>')}</td><td class="c">${fmtHM(r.hours*60)}</td><td class="r">${rateText(r)}</td><td class="r">${money(r.money)}</td>
         <td class="c">${r.u.type!=='TT'?'X':''}</td><td class="c">${r.u.type==='TT'?'X':''}</td><td>${esc(r.u.stk||'')}</td><td class="c">${esc(r.u.bank||'')}</td></tr>`).join('')
-        :'<tr><td colspan="13" class="c" style="padding:14px">Không có ca làm đã hoàn thành trong khoảng ngày này.</td></tr>'}
-      <tr class="tot"><td colspan="6" class="c">Tổng</td><td class="c">${fmtHM(d.hours*60)}</td><td></td><td class="r">${money(d.money)}</td><td></td><td></td><td></td><td></td></tr>
+        :'<tr><td colspan="12" class="c" style="padding:14px">Không có ca làm đã hoàn thành trong khoảng ngày này.</td></tr>'}
+      <tr class="tot"><td colspan="5" class="c">Tổng</td><td class="c">${fmtHM(d.hours*60)}</td><td></td><td class="r">${money(d.money)}</td><td></td><td></td><td></td><td></td></tr>
     </tbody></table>
     ${d.rows.some(r=>r.capped)?`<div style="font-size:12px;margin-top:4px;font-style:italic">(*) Nhân sự check out sau giờ chốt ca, chỉ tính công đến giờ chốt (Ca 1: ${esc(S.cap1)}, Ca 2: ${esc(S.cap2)}).</div>`:''}
     <div class="sign">${S.signers.map((t,i)=>`<div><b>${esc(t)}</b>${esc(S.signerNames[i]||'')}</div>`).join('')}</div>
@@ -961,15 +958,15 @@ async function tabPay(){
 function loadScript(src){return new Promise((res,rej)=>{const s=document.createElement('script');s.src=src;s.onload=res;s.onerror=rej;document.head.appendChild(s)})}
 async function exportXlsx(){
   const d=LASTPAY;if(!d)return;
-  const head=['Stt','Mã NV','Họ và tên','Bộ phận','Ngày','Giờ vào – ra','Số giờ (thập phân)','Tiền công giờ','Tiền công','TV','TT','STK','Ngân hàng'];
-  const body=d.rows.map((r,i)=>[i+1,r.u.code||'',r.u.name,r.u.dept||'',d.range,r.det.join('\n'),Math.round(r.hours*100)/100,r.rates.size===1?[...r.rates][0]:'Nhiều mức',Math.round(r.money),r.u.type!=='TT'?'X':'',r.u.type==='TT'?'X':'',r.u.stk||'',r.u.bank||'']);
-  const aoa=[[S.company],[S.addr1],[S.addr2],[],[S.title],[d.range],[],head,...body,['','','Tổng','','','',Math.round(d.hours*100)/100,'',Math.round(d.money)],[],S.signers,S.signerNames];
+  const head=['Stt','Họ và tên','Bộ phận','Ngày','Giờ vào – ra','Số giờ (thập phân)','Tiền công giờ','Tiền công','TV','TT','STK','Ngân hàng'];
+  const body=d.rows.map((r,i)=>[i+1,r.u.name,r.u.dept||'',d.range,r.det.join('\n'),Math.round(r.hours*100)/100,r.rates.size===1?[...r.rates][0]:'Nhiều mức',Math.round(r.money),r.u.type!=='TT'?'X':'',r.u.type==='TT'?'X':'',r.u.stk||'',r.u.bank||'']);
+  const aoa=[[S.company],[S.addr1],[S.addr2],[],[S.title],[d.range],[],head,...body,['','Tổng','','','',Math.round(d.hours*100)/100,'',Math.round(d.money)],[],S.signers,S.signerNames];
   const fname=`Bang-luong-${d.from}_${d.to}`;
   try{
     if(!window.XLSX)await loadScript('https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js');
     const ws=XLSX.utils.aoa_to_sheet(aoa);
-    ws['!cols']=[{wch:5},{wch:8},{wch:24},{wch:12},{wch:23},{wch:30},{wch:9},{wch:12},{wch:13},{wch:4},{wch:4},{wch:14},{wch:12}];
-    ws['!merges']=[{s:{r:4,c:0},e:{r:4,c:12}},{s:{r:5,c:0},e:{r:5,c:12}}];
+    ws['!cols']=[{wch:5},{wch:24},{wch:12},{wch:23},{wch:30},{wch:9},{wch:12},{wch:13},{wch:4},{wch:4},{wch:14},{wch:12}];
+    ws['!merges']=[{s:{r:4,c:0},e:{r:4,c:11}},{s:{r:5,c:0},e:{r:5,c:11}}];
     const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Bang luong');XLSX.writeFile(wb,fname+'.xlsx');
   }catch(e){ // không tải được thư viện (mất mạng) → xuất bảng HTML mở được bằng Excel
     const html=`<html><head><meta charset="utf-8"></head><body>${payrollHTML(d).replace(/<img[^>]*>/g,'')}</body></html>`;
@@ -984,31 +981,31 @@ async function tabUsers(){
   const {users,shifts}=await loadAll();
   const openIds=new Set(shifts.filter(s=>!s.outAt).map(s=>s.userId));
   const ord={admin:0,hr_head:1,hr:2,acc_head:3,staff:4};
-  const list=users.sort((a,b)=>(ord[a.role]??9)-(ord[b.role]??9)||String(a.code||'').localeCompare(String(b.code||''))||a.name.localeCompare(b.name,'vi'));
+  const list=users.sort((a,b)=>(ord[a.role]??9)-(ord[b.role]??9)||a.name.localeCompare(b.name,'vi'));
   const mgrs=list.filter(isMgr),staff=list.filter(u=>!isMgr(u));
-  const row=u=>`<tr><td>${u.code?`<b>${esc(u.code)}</b>`:(isMgr(u)?'<span class="muted">–</span>':'<span class="tag warn">Chưa có</span>')}</td>
+  const row=u=>`<tr>
       <td><div class="row" style="flex-wrap:nowrap"><img class="avatar" src="${avatar(u)}" alt=""><b>${esc(u.name)}</b></div></td>
-      <td style="white-space:nowrap">${isMgr(u)?`@${esc(u.username)}`:(u.phone?`<b>${fmtPhone(u.phone)}</b>`:'<span class="tag warn">Thiếu SĐT</span>')}</td>
+      <td style="white-space:nowrap">${u.phone?`<b>${fmtPhone(u.phone)}</b>`:(isMgr(u)?`@${esc(u.username)} <span class="tag warn">Chưa có SĐT</span>`:'<span class="tag warn">Thiếu SĐT</span>')}</td>
       <td>${isMgr(u)?`<span class="tag edit">${ROLE_SHORT[u.role]}</span>`:esc(u.dept||'')}</td>
       <td>${isMgr(u)?'–':u.type==='TT'?'Thực tập':'Thời vụ'}</td><td class="r">${isMgr(u)?'–':money(u.rate)}</td>
       <td>${[u.stk,u.bank].filter(Boolean).map(esc).join(' · ')}</td>
       <td>${!u.active?'<span class="tag off">Đã khoá</span>':openIds.has(u.id)?'<span class="tag open">Đang trong ca</span>':'<span class="tag ok">Hoạt động</span>'}${u.photo||isMgr(u)?'':' <span class="tag warn">Thiếu ảnh gốc</span>'}</td>
       <td style="white-space:nowrap">${CAN.editUser(u)?`<button class="btn ghost sm" data-act="editUser" data-id="${u.id}">Sửa</button>`:''} ${isMgr(u)?'':`<button class="btn ghost sm" data-act="userHist" data-id="${u.id}">Chấm công</button>`}</td></tr>`;
-  const head='<thead><tr><th>Mã NV</th><th>Họ tên</th><th>Đăng nhập</th><th>Bộ phận / Vai trò</th><th>Loại</th><th class="r">Tiền công/giờ</th><th>STK · Ngân hàng</th><th>Trạng thái</th><th></th></tr></thead>';
+  const head='<thead><tr><th>Họ tên</th><th>SĐT đăng nhập</th><th>Bộ phận / Vai trò</th><th>Loại</th><th class="r">Tiền công/giờ</th><th>STK · Ngân hàng</th><th>Trạng thái</th><th></th></tr></thead>';
   $('#tabBody').innerHTML=`
     <div class="row" style="margin:14px 0"><div class="sectionT" style="margin:0">Nhân sự thời vụ (${staff.length})</div><div class="sp"></div><button class="btn ghost" data-act="bulkUser">⇪ Thêm hàng loạt</button><button class="btn" data-act="addUser">+ Thêm nhân sự</button></div>
-    <div class="scroll"><table class="tbl">${head}<tbody>${staff.map(row).join('')||'<tr><td colspan="9" class="muted" style="text-align:center;padding:16px">Chưa có nhân sự thời vụ.</td></tr>'}</tbody></table></div>
+    <div class="scroll"><table class="tbl">${head}<tbody>${staff.map(row).join('')||'<tr><td colspan="8" class="muted" style="text-align:center;padding:16px">Chưa có nhân sự thời vụ.</td></tr>'}</tbody></table></div>
     <div class="row" style="margin:18px 0 10px"><div class="sectionT" style="margin:0">Tài khoản quản lý (${mgrs.length})</div><div class="sp"></div>${CAN.manageRoles()?'<button class="btn ghost" data-act="addMgr">+ Thêm tài khoản quản lý</button>':''}</div>
     <div class="scroll"><table class="tbl">${head}<tbody>${mgrs.map(row).join('')}</tbody></table></div>
     <div class="card" style="margin-top:14px"><div class="b" style="margin-bottom:6px">Phân quyền</div>
       <table class="tbl sm"><thead><tr><th>Việc</th><th>Quản trị</th><th>Trưởng BP Nhân sự</th><th>NV Nhân sự</th><th>Trưởng BP Kế toán</th></tr></thead><tbody>
-      ${[['Xem chấm công, ảnh, vị trí','✓','✓','✓','✓'],['Xem, in, xuất bảng lương','✓','✓','✓','✓'],['Tạo / sửa nhân sự thời vụ, mã NV, cấp lại mật khẩu','✓','✓','',''],['Duyệt yêu cầu sửa thông tin cá nhân','✓','✓','',''],['Điều chỉnh giờ công (sửa, thêm, xoá ca)','✓','','','✓'],['Duyệt yêu cầu báo sai giờ','✓','','','✓'],['Tạo tài khoản quản lý, phân quyền, cài đặt','✓','','','']].map(r=>`<tr><td>${r[0]}</td>${r.slice(1).map(c=>`<td style="text-align:center;color:#008a68;font-weight:700">${c}</td>`).join('')}</tr>`).join('')}
+      ${[['Xem chấm công, ảnh, vị trí','✓','✓','✓','✓'],['Xem, in, xuất bảng lương','✓','✓','✓','✓'],['Tạo / sửa nhân sự thời vụ, cấp lại mật khẩu','✓','✓','',''],['Duyệt yêu cầu sửa thông tin cá nhân','✓','✓','',''],['Điều chỉnh giờ công (sửa, thêm, xoá ca)','✓','','','✓'],['Duyệt yêu cầu báo sai giờ','✓','','','✓'],['Tạo tài khoản quản lý, phân quyền, cài đặt','✓','','','']].map(r=>`<tr><td>${r[0]}</td>${r.slice(1).map(c=>`<td style="text-align:center;color:#008a68;font-weight:700">${c}</td>`).join('')}</tr>`).join('')}
       </tbody></table></div>
     <p class="muted sm">Mật khẩu được mã hoá một chiều nên không ai xem lại được. Nhân viên quên mật khẩu thì bấm <b>Sửa → Tạo mật khẩu mới</b> rồi báo lại cho họ. Ảnh gốc hồ sơ dùng để đối chiếu khuôn mặt với ảnh check in/out.</p>`;
 }
 async function editUser(id,asMgr){
   const all0=await DB.all('users');
-  const u=id?all0.find(x=>x.id===id):(asMgr?{role:'hr',active:true,dept:'Văn phòng'}:{role:'staff',active:true,dept:S.defaultDept,rate:S.defaultRate,bank:S.defaultBank,type:'TV',code:nextCode(all0)});
+  const u=id?all0.find(x=>x.id===id):(asMgr?{role:'hr',active:true,dept:'Văn phòng'}:{role:'staff',active:true,dept:S.defaultDept,rate:S.defaultRate,bank:S.defaultBank,type:'TV'});
   if(!u)return;
   if(!CAN.editUser(u))return alert('Bạn không có quyền sửa tài khoản này.');
   let photo=u.photo||null;
@@ -1019,9 +1016,7 @@ async function editUser(id,asMgr){
     <div class="grid2">
       <div><label>Quyền / vai trò</label><select id="ur" ${roleOpts.length<2?'disabled':''}>${roleOpts.map(([k,l])=>`<option value="${k}" ${u.role===k?'selected':''}>${l}</option>`).join('')}</select></div>
       <div><label>Họ và tên *</label><input id="un" value="${esc(u.name||'')}"></div>
-      <div class="so"><label>Mã nhân viên *</label><input id="ucode" value="${esc(u.code||'')}" autocapitalize="characters" placeholder="VD: TV001"></div>
-      <div class="so"><label>Số điện thoại (dùng để đăng nhập) *</label><input id="uph2" type="tel" inputmode="numeric" maxlength="10" value="${esc(u.phone||'')}" placeholder="VD: 0905123456"></div>
-      <div class="mo"><label>Tên đăng nhập quản lý *</label><input id="uu" value="${esc(isMgr(u)?u.username||'':'')}" autocapitalize="none" placeholder="vd: nhansu.lan"></div>
+      <div><label>Số điện thoại (dùng để đăng nhập) *</label><input id="uph2" type="tel" inputmode="numeric" maxlength="10" value="${esc(u.phone||'')}" placeholder="VD: 0905123456"></div>
       <div><label>Bộ phận</label><input id="ud" value="${esc(u.dept||'')}" list="depts"><datalist id="depts"><option>Nhà Hàng</option><option>Buồng phòng</option><option>Lễ tân</option><option>Bếp</option><option>Sự kiện</option><option>Nhân sự</option><option>Kế toán</option></datalist></div>
       <div class="so"><label>Tiền công / giờ (đ)</label><input id="urt" type="number" min="0" step="1000" value="${+u.rate||0}"></div>
       <div class="so"><label>Loại</label><select id="ut"><option value="TV" ${u.type!=='TT'?'selected':''}>TV – Thời vụ</option><option value="TT" ${u.type==='TT'?'selected':''}>TT – Thực tập</option></select></div>
@@ -1033,7 +1028,7 @@ async function editUser(id,asMgr){
     <label style="display:flex;gap:8px;align-items:center;color:var(--ink)"><input type="checkbox" id="ua" style="width:auto" ${u.active!==false?'checked':''}> Đang hoạt động (bỏ chọn để khoá đăng nhập)</label>
     <div class="err" id="uerr"></div>
     <div class="row" style="justify-content:flex-end">${id&&id!==ME.id?'<button class="btn danger" id="udel">Xoá tài khoản</button><div class="sp"></div>':''}<button class="btn ghost" data-x="close">Huỷ</button><button class="btn" id="usave">Lưu</button></div>`);
-  const sync=()=>{const mg=$('#ur',m).value!=='staff';m.querySelectorAll('.so').forEach(e=>e.hidden=mg);m.querySelectorAll('.mo').forEach(e=>e.hidden=!mg)};
+  const sync=()=>{const mg=$('#ur',m).value!=='staff';m.querySelectorAll('.so').forEach(e=>e.hidden=mg)};
   $('#ur',m).onchange=sync;sync();
   $('#usnap',m).onclick=async()=>{const r=await openCamera({title:'Ảnh gốc hồ sơ',allowUpload:true});if(r){photo=r.img;$('#uph',m).src=photo}};
   if($('#urm',m))$('#urm',m).onclick=()=>{photo=null;$('#uph',m).src=avatar({name:$('#un',m).value})};
@@ -1046,27 +1041,20 @@ async function editUser(id,asMgr){
   $('#usave',m).onclick=async()=>{
     const err=$('#uerr',m),v=s=>$(s,m).value.trim();
     const role=$('#ur',m).value,mgr=role!=='staff',name=v('#un'),active=$('#ua',m).checked,pw=$('#up',m).value;
-    let username=v('#uu').toLowerCase(),phone=mgr?'':normPhone(v('#uph2')),code=mgr?'':v('#ucode').toUpperCase();
+    const phone=normPhone(v('#uph2'));
     if(!name)return err.textContent='Nhập họ và tên.';
     if(!CAN.manageRoles()&&role!=='staff')return err.textContent='Bạn chỉ được tạo tài khoản nhân sự thời vụ.';
+    if(!phone)return err.textContent='Nhập số điện thoại, người này dùng số này để đăng nhập.';
+    if(!validPhone(phone))return err.textContent='Số điện thoại phải gồm 10 số, bắt đầu bằng 0 (VD: 0905123456).';
     const all=await DB.all('users');
-    if(!mgr){
-      if(!code)return err.textContent='Nhập mã nhân viên.';
-      if(!/^[A-Z0-9_-]{2,20}$/.test(code))return err.textContent='Mã nhân viên chỉ gồm chữ không dấu, số (VD: TV001).';
-      const dupC=all.find(x=>x.id!==id&&String(x.code||'').toUpperCase()===code);if(dupC)return err.textContent='Mã '+code+' đã dùng cho '+dupC.name+'.';
-      if(!phone)return err.textContent='Nhập số điện thoại, nhân viên dùng số này để đăng nhập.';
-      if(!validPhone(phone))return err.textContent='Số điện thoại phải gồm 10 số, bắt đầu bằng 0 (VD: 0905123456).';
-      const dupP=all.find(x=>x.id!==id&&normPhone(x.phone)===phone);if(dupP)return err.textContent='Số điện thoại này đã dùng cho '+dupP.name+'.';
-      username=(u.role==='staff'&&u.username)||makeUsername(name,new Set(all.filter(x=>x.id!==id).map(x=>x.username))); // mã nội bộ
-    }else{
-      if(!/^[a-z0-9._-]{3,30}$/.test(username))return err.textContent='Tên đăng nhập quản lý 3–30 ký tự, chữ không dấu, số, dấu chấm, gạch.';
-    }
-    if(all.some(x=>x.username===username&&x.id!==id))return err.textContent=mgr?'Tên đăng nhập đã tồn tại.':'Trùng mã nội bộ, hãy sửa họ tên một chút rồi lưu lại.';
+    const dupP=all.find(x=>x.id!==id&&normPhone(x.phone)===phone);if(dupP)return err.textContent='Số điện thoại này đã dùng cho '+dupP.name+'.';
+    const username=u.username||makeUsername(name,new Set(all.filter(x=>x.id!==id).map(x=>x.username))); // mã nội bộ, không dùng để đăng nhập
     if(!id&&!pw)return err.textContent='Nhập mật khẩu cho tài khoản mới.';
     if(pw&&pw.length<6)return err.textContent='Mật khẩu ít nhất 6 ký tự.';
     const admins=all.filter(x=>x.role==='admin'&&x.active&&x.id!==id);
     if((role!=='admin'||!active)&&u.role==='admin'&&!admins.length)return err.textContent='Phải còn ít nhất 1 tài khoản admin đang hoạt động.';
-    const rec=Object.assign({},u,{id:id||uid(),name,username,role,active,photo,dept:v('#ud'),phone,code});
+    const rec=Object.assign({},u,{id:id||uid(),name,username,role,active,photo,dept:v('#ud'),phone});
+    delete rec.code;
     if(!mgr)Object.assign(rec,{rate:+$('#urt',m).value||0,type:$('#ut',m).value,stk:v('#us'),bank:v('#ub')});
     if(!id)rec.createdAt=new Date().toISOString();
     if(pw&&rec.id===ME.id)return err.textContent='Đổi mật khẩu của chính bạn bằng nút 🔑 ở góc trên màn hình.';
@@ -1076,7 +1064,7 @@ async function editUser(id,asMgr){
     if(rec.id===ME.id)ME={...ME,...rec};
     m.close();
     if(pw&&rec.id!==ME.id)modal(`<h3>Đã lưu tài khoản</h3><p>Gửi thông tin này cho <b>${esc(name)}</b>:</p>
-      <div class="card" style="font-size:18px">${!mgr?`Mã NV: <b>${esc(code)}</b><br>Số điện thoại: <b>${fmtPhone(phone)}</b>`:`Vai trò: <b>${ROLES[role]}</b><br>Tên đăng nhập: <b>${esc(username)}</b> <span class="muted sm">(bấm "Quản lý đăng nhập tại đây")</span>`}<br>Mật khẩu: <b>${esc(pw)}</b></div>
+      <div class="card" style="font-size:18px">${mgr?`Vai trò: <b>${ROLES[role]}</b><br>`:''}Số điện thoại: <b>${fmtPhone(phone)}</b><br>Mật khẩu: <b>${esc(pw)}</b></div>
       <p class="muted sm">Mật khẩu chỉ hiện một lần này. Lần đầu đăng nhập, nhân sự sẽ phải tự đổi mật khẩu.</p>
       <div class="row" style="justify-content:flex-end"><button class="btn" data-x="close">Đã ghi lại</button></div>`);
     else toast('Đã lưu');
@@ -1171,7 +1159,7 @@ async function makeDemo(){
   let made=0,editedOne=false,manualOne=false,overOne=false,farOne=false;
   for(const [name,un,col,dept,type,rate,bank,[ti,to]] of ppl){
     const id=uid(),stk='DEMO'+String(1000+made).slice(-4);made++;
-    await DB.put('users',{id,code:'TV'+String(made).padStart(3,'0'),name,username:un,role:'staff',active:true,_newPw:'123456',mustChange:false,dept,rate,type,bank,stk,phone:'09'+String(10000000+made*1234567).slice(0,8),
+    await DB.put('users',{id,name,username:un,role:'staff',active:true,_newPw:'123456',mustChange:false,dept,rate,type,bank,stk,phone:'09'+String(10000000+made*1234567).slice(0,8),
       photo:fakeFace(name,col),createdAt:new Date().toISOString(),demo:true});
     const plan=[];
     for(const d of days){
@@ -1225,7 +1213,7 @@ async function removeDemo(){
 }
 
 /* ---------- THÊM NHÂN SỰ HÀNG LOẠT ---------- */
-const BULK_COLS=['Họ và tên','Số điện thoại','Bộ phận','Tiền công/giờ','Loại (TV/TT)','STK','Ngân hàng','Mật khẩu (tuỳ chọn)','Mã NV (tuỳ chọn)'];
+const BULK_COLS=['Họ và tên','Số điện thoại','Bộ phận','Tiền công/giờ','Loại (TV/TT)','STK','Ngân hàng','Mật khẩu (tuỳ chọn)'];
 const unaccent=s=>String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/đ/g,'d').replace(/Đ/g,'D');
 function makeUsername(name,taken){
   const p=unaccent(name).toLowerCase().replace(/[^a-z\s]/g,'').trim().split(/\s+/).filter(Boolean);
@@ -1244,7 +1232,7 @@ function parseTable(rows){
   if(hi>=0){
     const h=rows[hi].map(N),find=re=>h.findIndex(c=>re.test(c));
     map={name:find(/ho\s*(va\s*)?ten/),phone:find(/dien thoai|^sdt|so dt|phone/),dept:find(/bo phan|phong ban/),rate:find(/tien cong gio|tien cong\/gio|\/gio|don gia|muc cong/),
-      type:find(/^loai|tv\s*\/\s*tt/),stk:find(/^stk$|so tai khoan|so tk/),bank:find(/ngan hang|bank/),un:find(/^ma nv|ma nhan vien|^ma so nv|^ma$/),pw:find(/mat khau|password/),
+      type:find(/^loai|tv\s*\/\s*tt/),stk:find(/^stk$|so tai khoan|so tk/),bank:find(/ngan hang|bank/),un:-1,pw:find(/mat khau|password/),
       tv:find(/^tv$/),tt:find(/^tt$/)};
     body=rows.slice(hi+1);
     if(body[0]&&body[0].some(c=>/^(tv|tt)$/i.test(c))&&!body[0][map.name]){const sub=body[0].map(N);map.tv=sub.indexOf('tv');map.tt=sub.indexOf('tt');body=body.slice(1)}
@@ -1268,17 +1256,12 @@ function parseRows(text){
 async function bulkPreview(m){
   const rows=parseRows($('#btext',m).value),all=await DB.all('users');
   const taken=new Set(all.map(u=>u.username)),phones=new Set(all.map(u=>normPhone(u.phone)).filter(Boolean)),out=[];
-  const codes=new Set(all.map(u=>String(u.code||'').toUpperCase()).filter(Boolean));let codeN=+(nextCode(all).slice(2))-1;
   for(const r of rows){
-    const [name,phone,dept,rate,type,stk,bank,pw,codeIn]=r;const it={name:(name||'').trim(),err:'',phone:excelPhone(phone)};
+    const [name,phone,dept,rate,type,stk,bank,pw]=r;const it={name:(name||'').trim(),err:'',phone:excelPhone(phone)};
     it.dept=dept||S.defaultDept;it.rate=+String(rate||'').replace(/[^\d]/g,'')||+S.defaultRate;
     it.type=/^tt|thực tập|thuc tap/i.test(type||'')?'TT':'TV';it.stk=(stk||'').replace(/\s/g,'');it.bank=bank||S.defaultBank;
     if(!it.name)it.err='Thiếu họ tên';
     if(it.name){it.username=makeUsername(it.name,taken);if(!it.username)it.err='Họ tên không hợp lệ'}
-    let c=String(codeIn||'').trim().toUpperCase();
-    if(c&&!/^[A-Z0-9_-]{2,20}$/.test(c))it.err='Mã NV sai định dạng';else if(c&&codes.has(c))it.err='Trùng mã NV';
-    if(!c){let n=codeN;do{n++;c='TV'+String(n).padStart(3,'0')}while(codes.has(c));codeN=n}
-    codes.add(c);it.code=c;
     if(pw&&pw.length<6)it.err='Mật khẩu dưới 6 ký tự';
     if(it.phone&&!validPhone(it.phone))it.err='SĐT không hợp lệ';else if(it.phone&&phones.has(it.phone))it.err='Trùng SĐT';else if(it.phone)phones.add(it.phone);
     it.pw=pw||randPw();
@@ -1287,8 +1270,8 @@ async function bulkPreview(m){
   }
   m.items=out;
   const ok=out.filter(x=>!x.err).length;
-  $('#bprev',m).innerHTML=out.length?`<div class="scroll" style="max-height:300px"><table class="tbl"><thead><tr><th>#</th><th>Mã NV</th><th>Họ và tên</th><th>SĐT đăng nhập</th><th>Bộ phận</th><th class="r">Tiền/giờ</th><th>Loại</th><th>STK · Ngân hàng</th><th>Kiểm tra</th></tr></thead><tbody>
-    ${out.map((x,i)=>`<tr><td>${i+1}</td><td><b>${esc(x.code||'')}</b></td><td><b>${esc(x.name)}</b></td><td>${x.phone?fmtPhone(x.phone):''}</td><td>${esc(x.dept)}</td><td class="r">${money(x.rate)}</td><td>${x.type}</td><td>${esc([x.stk,x.bank].filter(Boolean).join(' · '))}</td>
+  $('#bprev',m).innerHTML=out.length?`<div class="scroll" style="max-height:300px"><table class="tbl"><thead><tr><th>#</th><th>Họ và tên</th><th>SĐT đăng nhập</th><th>Bộ phận</th><th class="r">Tiền/giờ</th><th>Loại</th><th>STK · Ngân hàng</th><th>Kiểm tra</th></tr></thead><tbody>
+    ${out.map((x,i)=>`<tr><td>${i+1}</td><td><b>${esc(x.name)}</b></td><td>${x.phone?fmtPhone(x.phone):''}</td><td>${esc(x.dept)}</td><td class="r">${money(x.rate)}</td><td>${x.type}</td><td>${esc([x.stk,x.bank].filter(Boolean).join(' · '))}</td>
     <td>${x.err?`<span class="tag warn">${esc(x.err)}</span>`:x.warn?`<span class="tag open">${esc(x.warn)}</span>`:'<span class="tag ok">OK</span>'}</td></tr>`).join('')}</tbody></table></div>`
     :'<p class="muted">Chưa có dòng nào.</p>';
   const b=$('#bgo',m);b.disabled=!ok;b.textContent=`Tạo ${ok} tài khoản`;
@@ -1324,7 +1307,7 @@ function bulkModal(){
       if(taken.has(x.username)||(x.phone&&tp.has(x.phone)))continue;taken.add(x.username);if(x.phone)tp.add(x.phone);
       b.textContent=`Đang tạo ${k+1}/${items.length}...`;
       await DB.put('users',{id:uid(),name:x.name,username:x.username,role:'staff',active:true,_newPw:x.pw,mustChange:must,
-        dept:x.dept,rate:x.rate,type:x.type,stk:x.stk,bank:x.bank,phone:x.phone,photo:null,code:x.code,createdAt:new Date().toISOString()});
+        dept:x.dept,rate:x.rate,type:x.type,stk:x.stk,bank:x.bank,phone:x.phone,photo:null,createdAt:new Date().toISOString()});
       done.push(x);
     }
     m.close();renderAdmin();bulkResult(done);
@@ -1340,7 +1323,7 @@ async function bulkTemplate(){
 function slipsHTML(list){
   return `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8mm;font-family:Arial,sans-serif">${list.map(x=>`
     <div style="border:1px dashed #999;padding:5mm;break-inside:avoid;font-size:12px">
-      <img src="${LOGO}" style="height:28px"><div style="font-weight:700;margin:6px 0 2px;font-size:14px">${esc(x.name)} <span style="font-weight:400;color:#777">· ${esc(x.code||'')}</span></div>
+      <img src="${LOGO}" style="height:28px"><div style="font-weight:700;margin:6px 0 2px;font-size:14px">${esc(x.name)}</div>
       <div>${esc(x.dept||'')}</div><div style="margin-top:6px">Số điện thoại: <b style="font-size:15px">${fmtPhone(x.phone)}</b></div>
       <div>Mật khẩu: <b style="font-size:15px">${esc(x.pw)}</b></div>
       <div style="margin-top:6px;color:#555;font-size:11px">Mở link chấm công quản lý gửi, đăng nhập và đổi mật khẩu ngay lần đầu. Không đưa mật khẩu cho người khác.</div></div>`).join('')}</div>`;
@@ -1349,11 +1332,11 @@ function bulkResult(done){
   if(!done.length){toast('Không tạo được tài khoản nào');return}
   const m=modal(`<div class="row"><h3 style="margin:0">Đã tạo ${done.length} tài khoản</h3><div class="sp"></div><button class="btn ghost sm" data-x="close">Đóng</button></div>
     <p class="muted sm">Mật khẩu chỉ hiện <b>một lần này</b>. Tải danh sách hoặc in phiếu đưa cho từng người ngay bây giờ.</p>
-    <div class="scroll" style="max-height:340px"><table class="tbl"><thead><tr><th>#</th><th>Mã NV</th><th>Họ và tên</th><th>SĐT đăng nhập</th><th>Mật khẩu</th></tr></thead><tbody>
-    ${done.map((x,i)=>`<tr><td>${i+1}</td><td><b>${esc(x.code||'')}</b></td><td>${esc(x.name)}</td><td><b>${fmtPhone(x.phone)}</b></td><td><b>${esc(x.pw)}</b></td></tr>`).join('')}</tbody></table></div>
+    <div class="scroll" style="max-height:340px"><table class="tbl"><thead><tr><th>#</th><th>Họ và tên</th><th>SĐT đăng nhập</th><th>Mật khẩu</th></tr></thead><tbody>
+    ${done.map((x,i)=>`<tr><td>${i+1}</td><td>${esc(x.name)}</td><td><b>${fmtPhone(x.phone)}</b></td><td><b>${esc(x.pw)}</b></td></tr>`).join('')}</tbody></table></div>
     <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn ghost" id="rslip">🖨️ In phiếu phát cho nhân sự</button><button class="btn green" id="rxl">⬇️ Tải danh sách Excel</button></div>`,{wide:true,lock:true});
   $('#rslip',m).onclick=()=>{$('#printArea').innerHTML=slipsHTML(done);setTimeout(()=>window.print(),200)};
-  $('#rxl',m).onclick=async()=>{const rows=[['Mã NV','Họ và tên','Bộ phận','Số điện thoại (đăng nhập)','Mật khẩu'],...done.map(x=>[x.code,x.name,x.dept,x.phone,x.pw])];
+  $('#rxl',m).onclick=async()=>{const rows=[['Họ và tên','Bộ phận','Số điện thoại (đăng nhập)','Mật khẩu'],...done.map(x=>[x.name,x.dept,x.phone,x.pw])];
     try{if(!window.XLSX)await loadScript('https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js');
       const ws=XLSX.utils.aoa_to_sheet(rows);ws['!cols']=[{wch:24},{wch:14},{wch:18},{wch:12}];const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Tai khoan');XLSX.writeFile(wb,`tai-khoan-nhan-su-${today()}.xlsx`)}
     catch(e){download(`tai-khoan-nhan-su-${today()}.csv`,'﻿'+rows.map(r=>r.join(',')).join('\n'),'text/csv')}};
@@ -1361,7 +1344,6 @@ function bulkResult(done){
 
 /* ---------- Gắn sự kiện ---------- */
 const ACTS={
-  loginMode(){LOGIN_ADMIN=!LOGIN_ADMIN;renderLogin()},
   logout(){if(LIVE){LIVE.off();LIVE=null}fbAuth.signOut().finally(()=>{ME=null;STAB='home';SMONTH=null;TAB='att';route()})},
   stab(d){STAB=d.tab;renderStaff();window.scrollTo(0,0)},
   smonth(d){const [y,m]=SMONTH.split('-').map(Number);const n=new Date(y,m-1+(+d.d),1);SMONTH=ymd(n).slice(0,7);renderStaff()},
