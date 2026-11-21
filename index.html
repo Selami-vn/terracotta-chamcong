@@ -84,6 +84,9 @@ label{display:block;font-size:13px;color:var(--muted);margin:10px 0 4px}
 .tbl th{font-size:12px;text-transform:uppercase;letter-spacing:.3px;color:var(--muted);background:#fbf7f3}
 .tbl td.r,.tbl th.r{text-align:right}
 .tbl td.c,.tbl th.c{text-align:center}
+.usub{display:inline-flex;background:#f3ebe4;border-radius:12px;padding:4px;gap:4px}.usub .btn{border:0}.usub .btn.ghost{background:transparent}
+.ufilt{display:flex;gap:6px;flex-wrap:wrap}.nw{white-space:nowrap}
+.tbl th{white-space:nowrap}
 .perm{min-width:640px}.perm td{vertical-align:middle;padding:9px 10px}.perm td.c,.perm th.c{width:13%;text-align:center}
 .perm input[type=checkbox]{width:20px;height:20px;accent-color:#00AC82;margin:0;cursor:pointer}.perm input:disabled{cursor:default}
 .perm tr.pg td{background:#fbf7f3;font-weight:700;color:var(--brown);font-size:13px;padding:7px 10px}
@@ -157,7 +160,7 @@ html{scroll-padding-bottom:110px}
 .bnav button{position:relative}.bnav .badge{position:absolute;top:4px;left:calc(50% + 6px);font-size:10px;padding:1px 5px}
 /* Màn quản lý trên điện thoại: thanh dưới, danh sách thẻ thay cho bảng */
 .mnav,.mob-only,.mrole{display:none}
-.mlist{display:flex;flex-direction:column;gap:10px}
+.mlist{display:flex;flex-direction:column;gap:10px}.mlist.mob-only{display:none}
 .mcard{background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px}
 .mcard .mh{display:flex;gap:10px;align-items:center}.mcard .mh .sp{flex:1}
 .mcard .mio{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
@@ -170,6 +173,7 @@ html{scroll-padding-bottom:110px}
 @media(max-width:700px){
   .tabbar,.desk-only{display:none!important}
   .mnav{display:flex}.mob-only{display:block}.mlist.mob-only{display:flex}
+  .usub{width:100%}.usub .btn{flex:1}
   .mrole{display:block;font-size:12px;color:var(--muted);margin:2px 0 -4px}
   .wrap.madmin{padding-bottom:calc(92px + env(safe-area-inset-bottom))}
   .sheetwrap:not(.show){display:none}
@@ -1075,36 +1079,47 @@ function printPayroll(){$('#printArea').innerHTML=payrollHTML(LASTPAY);setTimeou
 function download(name,content,type){const b=content instanceof Blob?content:new Blob([content],{type});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),2000)}
 
 /* ---- Tab Nhân sự ---- */
+let USUB='tv',UFILT='all';
 async function tabUsers(){
   const {users,shifts}=await loadAll();
   const openIds=new Set(shifts.filter(s=>!s.outAt).map(s=>s.userId));
   const ord={admin:0,acc:1,hr_head:2,hr:3,dept_head:4,staff:9};
   const list=users.sort((a,b)=>(ord[a.role]??9)-(ord[b.role]??9)||a.name.localeCompare(b.name,'vi'));
-  const mgrs=list.filter(isMgr),staff=list.filter(u=>!isMgr(u));
-  const row=u=>`<tr>
-      <td><div class="row" style="flex-wrap:nowrap"><img class="avatar" src="${avatar(u)}" alt=""><b>${esc(u.name)}</b></div></td>
-      <td style="white-space:nowrap">${u.phone?`<b>${fmtPhone(u.phone)}</b>`:(isMgr(u)?`@${esc(u.username)} <span class="tag warn">Chưa có SĐT</span>`:'<span class="tag warn">Thiếu SĐT</span>')}</td>
-      <td>${isMgr(u)?`<span class="tag edit">${ROLE_SHORT[u.role]||u.role}</span>${u.role==='dept_head'&&u.dept?' <span class="muted sm">'+esc(u.dept)+'</span>':''}`:esc(u.dept||'')}</td>
-      <td>${isMgr(u)?'–':u.type==='TT'?'Thực tập':'Thời vụ'}</td><td class="r">${isMgr(u)?'–':money(u.rate)}</td>
-      <td>${[u.stk,u.bank].filter(Boolean).map(esc).join(' · ')}</td>
-      <td>${!u.active?'<span class="tag off">Đã khoá</span>':openIds.has(u.id)?'<span class="tag open">Đang trong ca</span>':'<span class="tag ok">Hoạt động</span>'}${u.photo||isMgr(u)?'':' <span class="tag warn">Thiếu ảnh gốc</span>'}</td>
-      <td style="white-space:nowrap">${CAN.editUser(u)?`<button class="btn ghost sm" data-act="editUser" data-id="${u.id}">Sửa</button>`:''} ${isMgr(u)||!CAN.viewAtt()?'':`<button class="btn ghost sm" data-act="userHist" data-id="${u.id}">Chấm công</button>`}</td></tr>`;
-  const card=u=>`<div class="mcard"><div class="mh"><img class="avatar" src="${avatar(u)}" alt=""><div><b>${esc(u.name)}</b><div class="sm">${u.phone?'📱 '+fmtPhone(u.phone):'<span class="tag warn">Thiếu SĐT</span>'}</div></div><div class="sp"></div>
-      ${!u.active?'<span class="tag off">Đã khoá</span>':openIds.has(u.id)?'<span class="tag open">Trong ca</span>':'<span class="tag ok">Hoạt động</span>'}</div>
+  const mgrs=list.filter(isMgr),staffAll=list.filter(u=>!isMgr(u));
+  const nOn=staffAll.filter(u=>u.active).length,nOff=staffAll.length-nOn;
+  const staff=staffAll.filter(u=>UFILT==='on'?u.active:UFILT==='off'?!u.active:true);
+  const st=u=>!u.active?'<span class="tag off">Đã khoá</span>':openIds.has(u.id)?'<span class="tag open">Đang trong ca</span>':'<span class="tag ok">Hoạt động</span>';
+  const who=u=>`<div class="row" style="flex-wrap:nowrap"><img class="avatar" src="${avatar(u)}" alt=""><b>${esc(u.name)}</b></div>`;
+  const ph=u=>u.phone?`<b>${fmtPhone(u.phone)}</b>`:'<span class="tag warn">Thiếu SĐT</span>';
+  const editB=u=>CAN.editUser(u)?`<button class="btn ghost sm" data-act="editUser" data-id="${u.id}">Sửa</button>`:'';
+  const histB=u=>CAN.viewAtt()?`<button class="btn ghost sm" data-act="userHist" data-id="${u.id}">Chấm công</button>`:'';
+  const rowTV=u=>`<tr><td>${who(u)}</td><td class="nw">${ph(u)}</td><td>${esc(u.dept||'')}</td><td class="nw">${u.type==='TT'?'Thực tập':'Thời vụ'}</td><td class="r">${money(u.rate)}</td>
+      <td>${[u.stk,u.bank].filter(Boolean).map(esc).join(' · ')}</td><td>${st(u)}${u.photo?'':' <span class="tag warn">Thiếu ảnh gốc</span>'}</td><td class="nw">${editB(u)} ${histB(u)}</td></tr>`;
+  const rowNB=u=>`<tr><td>${who(u)}</td><td class="nw">${ph(u)}</td><td><span class="tag edit">${ROLE_SHORT[u.role]||u.role}</span></td><td>${esc(u.dept||'')}</td><td>${st(u)}</td><td class="nw">${editB(u)}</td></tr>`;
+  const card=u=>`<div class="mcard"><div class="mh"><img class="avatar" src="${avatar(u)}" alt=""><div><b>${esc(u.name)}</b><div class="sm">${u.phone?'📱 '+fmtPhone(u.phone):'<span class="tag warn">Thiếu SĐT</span>'}</div></div><div class="sp"></div>${st(u)}</div>
     <div class="mf">${isMgr(u)?`<span class="tag edit">${ROLE_SHORT[u.role]||u.role}</span>${u.dept?'<span class="muted sm">'+esc(u.dept)+'</span>':''}`:`<span>${esc(u.dept||'')}</span><span class="muted sm">· ${u.type==='TT'?'Thực tập':'Thời vụ'} · ${money(u.rate)}đ/giờ</span>`}${u.photo||isMgr(u)?'':'<span class="tag warn">Thiếu ảnh gốc</span>'}</div>
     ${u.stk&&!isMgr(u)?`<div class="muted sm" style="margin-top:4px">🏦 ${esc(u.stk)} · ${esc(u.bank||'')}</div>`:''}
-    <div class="mf"><div class="sp"></div>${isMgr(u)||!CAN.viewAtt()?'':`<button class="btn ghost sm" data-act="userHist" data-id="${u.id}">Chấm công</button>`}${CAN.editUser(u)?`<button class="btn ghost sm" data-act="editUser" data-id="${u.id}">Sửa</button>`:''}</div></div>`;
-  const head='<thead><tr><th>Họ tên</th><th>SĐT đăng nhập</th><th>Bộ phận / Vai trò</th><th>Loại</th><th class="r">Tiền công/giờ</th><th>STK · Ngân hàng</th><th>Trạng thái</th><th></th></tr></thead>';
-  $('#tabBody').innerHTML=`
-    <div class="row" style="margin:14px 0"><div class="sectionT" style="margin:0">Nhân sự thời vụ (${staff.length})</div><div class="sp"></div>${CAN.addUser()?'<button class="btn ghost" data-act="bulkUser">⇪ Thêm hàng loạt</button><button class="btn" data-act="addUser">+ Thêm nhân sự</button>':''}</div>
-    <div class="mlist mob-only">${staff.map(card).join('')||'<p class="muted" style="text-align:center">Chưa có nhân sự thời vụ.</p>'}</div>
-    <div class="scroll desk-only"><table class="tbl">${head}<tbody>${staff.map(row).join('')||'<tr><td colspan="8" class="muted" style="text-align:center;padding:16px">Chưa có nhân sự thời vụ.</td></tr>'}</tbody></table></div>
-    <div class="row" style="margin:18px 0 10px"><div class="sectionT" style="margin:0">Tài khoản quản lý (${mgrs.length})</div><div class="sp"></div>${CAN.manageRoles()?'<button class="btn ghost" data-act="addMgr">+ Thêm tài khoản quản lý</button>':''}</div>
-    <div class="mlist mob-only">${mgrs.map(card).join('')}</div>
-    <div class="scroll desk-only"><table class="tbl">${head}<tbody>${mgrs.map(row).join('')}</tbody></table></div>
-    <div class="card" style="margin-top:14px" id="permCard"></div>
-    <p class="muted sm">Mật khẩu được mã hoá một chiều nên không ai xem lại được. Nhân viên quên mật khẩu thì bấm <b>Sửa → Tạo mật khẩu mới</b> rồi báo lại cho họ. Ảnh gốc hồ sơ dùng để đối chiếu khuôn mặt với ảnh check in/out.</p>`;
-  renderPerms();
+    <div class="mf"><div class="sp"></div>${isMgr(u)?'':histB(u)}${editB(u)}</div></div>`;
+  const sub=`<div class="usub">${[['tv',`Thời vụ (${staffAll.length})`],['nb',`Nội bộ (${mgrs.length})`]].map(([k,l])=>`<button class="btn sm ${USUB===k?'':'ghost'}" data-act="usub" data-k="${k}">${l}</button>`).join('')}</div>`;
+  const empty=(n,t)=>`<tr><td colspan="${n}" class="muted" style="text-align:center;padding:16px">${t}</td></tr>`;
+  let body;
+  if(USUB==='tv'){
+    const msg=staffAll.length?'Không có ai ở trạng thái này.':'Chưa có nhân sự thời vụ.';
+    body=`<div class="row" style="margin:12px 0"><div class="ufilt">${[['all',`Tất cả (${staffAll.length})`],['on',`Đang hoạt động (${nOn})`],['off',`Đã khoá (${nOff})`]].map(([k,l])=>`<button class="btn sm ${UFILT===k?'':'ghost'}" data-act="ufilt" data-k="${k}">${l}</button>`).join('')}</div>
+        <div class="sp"></div>${CAN.addUser()?'<button class="btn ghost" data-act="bulkUser">⇪ Thêm hàng loạt</button><button class="btn" data-act="addUser">+ Thêm nhân sự</button>':''}</div>
+      <div class="mlist mob-only">${staff.map(card).join('')||`<p class="muted" style="text-align:center">${msg}</p>`}</div>
+      <div class="scroll desk-only"><table class="tbl"><thead><tr><th>Họ tên</th><th>SĐT đăng nhập</th><th>Bộ phận</th><th>Loại</th><th class="r">Tiền công/giờ</th><th>STK · Ngân hàng</th><th>Trạng thái</th><th></th></tr></thead>
+        <tbody>${staff.map(rowTV).join('')||empty(8,msg)}</tbody></table></div>
+      <p class="muted sm">Mật khẩu được mã hoá một chiều nên không ai xem lại được. Nhân viên quên mật khẩu thì bấm <b>Sửa → Tạo mật khẩu mới</b> rồi báo lại cho họ. Ảnh gốc hồ sơ dùng để đối chiếu khuôn mặt với ảnh check in/out.</p>`;
+  }else{
+    body=`<div class="row" style="margin:12px 0"><span class="muted sm">Trưởng bộ phận, Kế toán, Nhân sự và các tài khoản quản lý khác</span><div class="sp"></div>${CAN.manageRoles()?'<button class="btn" data-act="addMgr">+ Thêm tài khoản nội bộ</button>':''}</div>
+      <div class="mlist mob-only">${mgrs.map(card).join('')}</div>
+      <div class="scroll desk-only"><table class="tbl"><thead><tr><th>Họ tên</th><th>SĐT đăng nhập</th><th>Vị trí</th><th>Bộ phận</th><th>Trạng thái</th><th></th></tr></thead>
+        <tbody>${mgrs.map(rowNB).join('')||empty(6,'Chưa có tài khoản nội bộ.')}</tbody></table></div>
+      <div class="card" style="margin-top:14px" id="permCard"></div>`;
+  }
+  $('#tabBody').innerHTML=`<div style="margin-top:14px">${sub}</div>${body}`;
+  if(USUB==='nb')renderPerms();
 }
 /* ---- Phân quyền theo vị trí: Xem / Thêm / Sửa (chỉ Trưởng BP Kế toán được tick) ---- */
 let PERM_DRAFT=null;
@@ -1151,7 +1166,7 @@ async function editUser(id,asMgr){
   if(id?!CAN.editUser(u):!(asMgr?CAN.manageRoles():CAN.addUser()))return alert('Bạn không có quyền '+(id?'sửa':'thêm')+' tài khoản này.');
   let photo=u.photo||null;
   const roleOpts=CAN.manageRoles()?Object.entries(ROLES):[['staff',ROLES.staff]];
-  const m=modal(`<h3>${id?'Sửa tài khoản':isMgr(u)?'Thêm tài khoản quản lý':'Thêm nhân sự thời vụ'}</h3>
+  const m=modal(`<h3>${id?'Sửa tài khoản':isMgr(u)?'Thêm tài khoản nội bộ':'Thêm nhân sự thời vụ'}</h3>
     <div class="row"><img id="uph" class="avatar" style="width:72px;height:72px" src="${photo||avatar(u)}" alt="">
       <div><button class="btn ghost sm" id="usnap">📸 Chụp / chọn ảnh gốc</button>${photo?' <button class="btn danger sm" id="urm">Xoá ảnh</button>':''}<div class="muted sm">Ảnh chân dung rõ mặt để đối chiếu khi chấm công.</div></div></div>
     <div class="grid2">
@@ -1500,7 +1515,7 @@ const ACTS={
   payPrint(){printPayroll()},payXlsx(){exportXlsx()},
   addUser(){editUser(null)},addMgr(){editUser(null,true)},editUser(d){editUser(d.id)},
   userHist(d){F={from:quickRange('month')[0],to:today(),user:d.id};TAB='att';renderAdmin()},
-  saveSet(){saveSettings()},permSave(){savePerms()},
+  saveSet(){saveSettings()},permSave(){savePerms()},usub(d){USUB=d.k;tabUsers()},ufilt(d){UFILT=d.k;tabUsers()},
   async geoHere(){const i=$('#s_ginfo');i.textContent='Đang lấy vị trí…';try{const g=await getPos();$('#s_glat').value=g.lat;$('#s_glng').value=g.lng;i.textContent='Đã lấy (sai số ±'+g.acc+' m). Bấm Lưu cài đặt.'}catch(e){i.textContent='Không lấy được vị trí, hãy cho phép trình duyệt dùng vị trí.'}},backup(){backup()},wipe(){wipe()},demo(){makeDemo()},rmDemo(){removeDemo()},bulkUser(){bulkModal()}
 };
 document.addEventListener('click',e=>{const b=e.target.closest('[data-act]');if(!b)return;const f=ACTS[b.dataset.act];if(f){e.preventDefault();f(b.dataset,b)}});
