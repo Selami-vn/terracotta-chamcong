@@ -84,8 +84,10 @@ label{display:block;font-size:13px;color:var(--muted);margin:10px 0 4px}
 .tbl th{font-size:12px;text-transform:uppercase;letter-spacing:.3px;color:var(--muted);background:#fbf7f3}
 .tbl td.r,.tbl th.r{text-align:right}
 .tbl td.c,.tbl th.c{text-align:center}
-.perm td{vertical-align:middle;padding:12px 10px}.perm td.c{width:22%}.perm td:first-child{font-size:15px}.perm input[type=checkbox]{width:20px;height:20px;accent-color:#00AC82;margin:0;cursor:pointer}.perm input:disabled{cursor:default}
-.perm .pall{display:inline-flex;flex-direction:column;gap:4px;align-items:center;margin:0;color:inherit;font-size:12px;cursor:pointer}
+.perm{min-width:640px}.perm td{vertical-align:middle;padding:9px 10px}.perm td.c,.perm th.c{width:13%;text-align:center}
+.perm input[type=checkbox]{width:20px;height:20px;accent-color:#00AC82;margin:0;cursor:pointer}.perm input:disabled{cursor:default}
+.perm tr.pg td{background:#fbf7f3;font-weight:700;color:var(--brown);font-size:13px;padding:7px 10px}
+.perm .pok{color:#008a68;font-weight:700;font-size:16px}.perm th .ls{display:none}
 .pown{display:flex;gap:10px;align-items:center;color:var(--ink);font-size:14px;margin:12px 0 0;cursor:pointer}.pown input{width:20px;height:20px;accent-color:#00AC82;margin:0}
 .scroll{overflow:auto;border:1px solid var(--line);border-radius:12px}
 .thumb{width:46px;height:46px;object-fit:cover;border-radius:8px;cursor:zoom-in;vertical-align:middle;margin-right:6px;border:1px solid var(--line)}
@@ -172,8 +174,8 @@ html{scroll-padding-bottom:110px}
   .sheetwrap:not(.show){display:none}
   .filters{gap:8px}.filters>div{flex:1 1 140px}
   .filters .btn{flex:1 1 auto}
-  .perm td,.perm th{padding:10px 6px}
-  #permCard .prole .btn{flex:1 1 40%}
+  .perm{min-width:0;font-size:13px}.perm .ptop{display:none}.perm th .lf{display:none}.perm th .ls{display:inline}
+  .perm td,.perm th{padding:8px 4px}.perm td:first-child{padding-left:8px}.perm td.c,.perm th.c{width:15%}
   .stats{gap:6px}.stat{padding:8px 10px}
 }
 .scard{background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:8px}
@@ -256,16 +258,27 @@ const ukey=un=>'u-'+String(un).replace(/\./g,','); // Firebase không cho dấu 
 const ROLES={admin:'Trưởng bộ phận Kế toán (toàn quyền)',acc:'Nhân viên Kế toán',hr_head:'Trưởng bộ phận Nhân sự',hr:'Nhân viên Nhân sự',dept_head:'Trưởng bộ phận (các bộ phận khác)',staff:'Nhân sự thời vụ (chấm công)'};
 const ROLE_SHORT={admin:'Trưởng BP Kế toán',acc:'NV Kế toán',hr_head:'Trưởng BP Nhân sự',hr:'NV Nhân sự',dept_head:'Trưởng BP',acc_head:'Trưởng BP Kế toán',staff:'Thời vụ'};
 const PERM_ROLES=['acc','hr_head','hr','dept_head'];
-/* Phân quyền gọn: 3 đối tượng × Xem / Thêm / Sửa.
-   Sửa chấm công gồm cả duyệt báo sai giờ; Sửa nhân sự gồm cả duyệt yêu cầu sửa thông tin. */
-const PERM_OBJ=[
-  {k:'att',name:'Chấm công',v:1,a:1,e:1},
-  {k:'pay',name:'Bảng lương',v:1,a:0,e:0},
-  {k:'staff',name:'Nhân sự thời vụ',v:1,a:1,e:1},
+/* Phân quyền: mỗi dòng là một việc, mỗi cột là một vị trí. Trưởng BP Kế toán luôn có toàn quyền. */
+const PERM_ROWS=[
+  {g:'Chấm công'},
+  {k:'att_v',t:'Xem chấm công, ảnh, vị trí'},
+  {k:'att_a',t:'Thêm ca thủ công'},
+  {k:'att_e',t:'Sửa giờ, xoá ca'},
+  {k:'rqs_e',t:'Duyệt yêu cầu báo sai giờ'},
+  {g:'Bảng lương'},
+  {k:'pay_v',t:'Xem, in, xuất bảng lương'},
+  {g:'Nhân sự thời vụ'},
+  {k:'staff_v',t:'Xem danh sách, hồ sơ'},
+  {k:'staff_a',t:'Thêm nhân sự (từng người, hàng loạt)'},
+  {k:'staff_e',t:'Sửa thông tin, khoá, cấp lại mật khẩu'},
+  {k:'rqp_e',t:'Duyệt yêu cầu sửa thông tin cá nhân'},
+  {g:'Phạm vi và quản trị'},
+  {k:'own',t:'Chỉ thấy nhân sự thuộc bộ phận của mình'},
+  {k:'_top',t:'Tạo tài khoản quản lý, phân quyền, cài đặt',lock:true},
 ];
 const DEFAULT_PERMS={
   acc:{att_v:true,pay_v:true},
-  hr_head:{att_v:true,pay_v:true,staff_v:true,staff_a:true,staff_e:true},
+  hr_head:{att_v:true,pay_v:true,staff_v:true,staff_a:true,staff_e:true,rqp_e:true},
   hr:{att_v:true,pay_v:true,staff_v:true},
   dept_head:{att_v:true,staff_v:true,own:true},
 };
@@ -286,9 +299,9 @@ const CAN={
   manageRoles:()=>isTop(),
   settings:()=>isTop(),
   editUser:u=>isTop()||(!!u&&u.role==='staff'&&can('staff_e')&&inScope(u)),
-  viewReq:r=>r.type==='shift'?(can('att_v')||can('att_e')):CAN.viewStaff(),
-  decide:r=>r.type==='shift'?can('att_e'):can('staff_e'),
-  anyReq:()=>can('att_e')||can('staff_e'),
+  viewReq:r=>CAN.decide(r),
+  decide:r=>r.type==='shift'?can('rqs_e'):can('rqp_e'),
+  anyReq:()=>can('rqs_e')||can('rqp_e'),
 };
 const loginKeys=u=>{const a=[];if(u&&isMgr(u)&&u.username)a.push(ukey(u.username));if(u&&u.phone)a.push(normPhone(u.phone));return a};
 const emailOf=(sid,v)=>sid.toLowerCase()+'.v'+v+MAIL_DOMAIN;
@@ -813,7 +826,7 @@ async function tabReq(){
       ${r.note?`<div class="sm" style="margin-top:8px">💬 ${esc(r.note)}</div>`:''}${body}
       ${r.status==='pending'?(!CAN.decide(r)?'<div class="muted sm" style="margin-top:8px">Bạn chỉ được xem yêu cầu này.</div>':`<div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn danger sm" data-act="reqReject" data-id="${r.id}">Từ chối</button><button class="btn green sm" data-act="reqApprove" data-id="${r.id}">✓ Duyệt</button></div>`)
         :`<div class="muted sm" style="margin-top:8px">${r.status==='approved'?'Duyệt':'Từ chối'} bởi ${esc(r.decidedBy||'')} lúc ${hm(r.decidedAt)} ${dmy(r.decidedAt)}${r.decisionNote?' · '+esc(r.decisionNote):''}</div>`}</div>`};
-  const dec=[can('att_e')&&'<b>báo sai giờ</b>',can('staff_e')&&'<b>sửa thông tin cá nhân</b>'].filter(Boolean);
+  const dec=[can('rqs_e')&&'<b>báo sai giờ</b>',can('rqp_e')&&'<b>sửa thông tin cá nhân</b>'].filter(Boolean);
   const scope=isTop()?'':`<p class="muted sm">${dec.length?'Bạn được duyệt yêu cầu '+dec.join(' và ')+'.':'Bạn chỉ được xem các yêu cầu, không duyệt.'}</p>`;
   $('#tabBody').innerHTML=scope+`<div class="sectionT">Chờ duyệt (${pend.length})</div>${pend.length?pend.map(card).join(''):'<p class="muted">Không có yêu cầu nào đang chờ.</p>'}
     ${reqs.length>pend.length?`<div class="sectionT">Đã xử lý</div>${reqs.filter(r=>r.status!=='pending').slice(0,30).map(card).join('')}`:''}`;
@@ -1085,27 +1098,24 @@ async function tabUsers(){
   renderPerms();
 }
 /* ---- Phân quyền theo vị trí: Xem / Thêm / Sửa (chỉ Trưởng BP Kế toán được tick) ---- */
-let PERM_SEL='acc',PERM_DRAFT=null;
+let PERM_DRAFT=null;
+const PERM_HEAD={admin:['Trưởng BP Kế toán','TrBP KT'],acc:['NV Kế toán','NV KT'],hr_head:['Trưởng BP Nhân sự','TrBP NS'],hr:['NV Nhân sự','NV NS'],dept_head:['Trưởng BP khác','TrBP khác']};
 function renderPerms(){
   const box=$('#permCard');if(!box)return;
-  const top=isTop(),r=top?PERM_SEL:ME.role;
+  const top=isTop();
   if(!PERM_DRAFT||!top)PERM_DRAFT=clean(S.perms||{});
-  const P0=PERM_DRAFT[r]||{},on=k=>!!P0[k];
-  const cols=[['v','Xem'],['a','Thêm'],['e','Sửa']];
-  const colAll=c=>PERM_OBJ.filter(o=>o[c]).every(o=>on(o.k+'_'+c));
-  const cb=k=>`<input type="checkbox" class="pchk" data-k="${k}" ${on(k)?'checked':''} ${top?'':'disabled'}>`;
-  box.innerHTML=`<div class="row"><div class="b">Phân quyền</div><div class="sp"></div><span class="muted sm">${top?'Trưởng BP Kế toán luôn có toàn quyền':'Do Trưởng BP Kế toán cấp'}</span></div>
-    ${top?`<div class="row prole" style="margin:10px 0">${PERM_ROLES.map(k=>`<button class="btn ${k===r?'':'ghost'} sm" data-act="permRole" data-r="${k}">${ROLE_SHORT[k]}</button>`).join('')}</div>`:`<p class="sm" style="margin:8px 0">Vị trí: <b>${ROLES[r]||r}</b></p>`}
-    <table class="tbl perm"><thead><tr><th>Đối tượng</th>${cols.map(([c,l])=>`<th class="c">${top?`<label class="pall"><input type="checkbox" class="pcol" data-c="${c}" ${colAll(c)?'checked':''}>${l}</label>`:l}</th>`).join('')}</tr></thead><tbody>
-    ${PERM_OBJ.map(o=>`<tr><td><b>${o.name}</b></td>${cols.map(([c])=>`<td class="c">${o[c]?cb(o.k+'_'+c):''}</td>`).join('')}</tr>`).join('')}
-    </tbody></table>
-    <label class="pown">${cb('own')} Chỉ thấy nhân sự thuộc bộ phận của mình</label>
-    <p class="muted sm" style="margin:6px 0 0">Sửa chấm công gồm sửa giờ, xoá ca và duyệt báo sai giờ. Sửa nhân sự gồm sửa thông tin, cấp lại mật khẩu và duyệt yêu cầu sửa thông tin.</p>
+  const on=(r,k)=>!!(PERM_DRAFT[r]&&PERM_DRAFT[r][k]);
+  const hd=r=>`<th class="c${r==='admin'?' ptop':''}"><span class="lf">${PERM_HEAD[r][0]}</span><span class="ls">${PERM_HEAD[r][1]}</span></th>`;
+  const cell=(row,r)=>row.lock?'<span class="muted">–</span>':`<input type="checkbox" class="pchk" data-r="${r}" data-k="${row.k}" ${on(r,row.k)?'checked':''} ${top?'':'disabled'} aria-label="${esc(PERM_HEAD[r][0]+': '+row.t)}">`;
+  box.innerHTML=`<div class="row"><div class="b">Phân quyền</div><div class="sp"></div><span class="muted sm">${top?'Tick ô để cấp quyền, bấm Lưu':'Do Trưởng BP Kế toán cấp'}</span></div>
+    <div class="scroll" style="margin-top:8px"><table class="tbl perm"><thead><tr><th>Việc</th>${hd('admin')}${PERM_ROLES.map(hd).join('')}</tr></thead><tbody>
+    ${PERM_ROWS.map(row=>row.g?`<tr class="pg"><td colspan="${PERM_ROLES.length+2}">${row.g}</td></tr>`
+      :`<tr><td>${row.t}</td><td class="c ptop"><span class="pok">✓</span></td>${PERM_ROLES.map(r=>`<td class="c">${cell(row,r)}</td>`).join('')}</tr>`).join('')}
+    </tbody></table></div>
+    <p class="muted sm" style="margin:8px 0 0">Trưởng BP Kế toán luôn có toàn quyền. "Chỉ thấy bộ phận của mình" lọc theo ô Bộ phận của tài khoản, dùng cho các Trưởng BP.</p>
     ${top?'<div class="row" style="justify-content:flex-end;margin-top:10px"><span class="muted sm" id="permMsg"></span><button class="btn" data-act="permSave">Lưu phân quyền</button></div>':''}`;
   if(!top)return;
-  const set=(k,v)=>{PERM_DRAFT[r]=PERM_DRAFT[r]||{};if(v)PERM_DRAFT[r][k]=true;else delete PERM_DRAFT[r][k];$('#permMsg').textContent='Chưa lưu'};
-  box.querySelectorAll('.pchk').forEach(e=>e.onchange=()=>{set(e.dataset.k,e.checked);box.querySelectorAll('.pcol').forEach(h=>h.checked=colAll(h.dataset.c))});
-  box.querySelectorAll('.pcol').forEach(h=>h.onchange=()=>{PERM_OBJ.filter(o=>o[h.dataset.c]).forEach(o=>set(o.k+'_'+h.dataset.c,h.checked));const m=$('#permMsg').textContent;renderPerms();$('#permMsg').textContent=m});
+  box.querySelectorAll('.pchk').forEach(e=>e.onchange=()=>{const r=e.dataset.r,k=e.dataset.k;PERM_DRAFT[r]=PERM_DRAFT[r]||{};if(e.checked)PERM_DRAFT[r][k]=true;else delete PERM_DRAFT[r][k];$('#permMsg').textContent='Chưa lưu'});
 }
 async function savePerms(){
   if(!isTop())return;
@@ -1468,7 +1478,7 @@ const ACTS={
   payPrint(){printPayroll()},payXlsx(){exportXlsx()},
   addUser(){editUser(null)},addMgr(){editUser(null,true)},editUser(d){editUser(d.id)},
   userHist(d){F={from:quickRange('month')[0],to:today(),user:d.id};TAB='att';renderAdmin()},
-  saveSet(){saveSettings()},permRole(d){PERM_SEL=d.r;renderPerms()},permSave(){savePerms()},
+  saveSet(){saveSettings()},permSave(){savePerms()},
   async geoHere(){const i=$('#s_ginfo');i.textContent='Đang lấy vị trí…';try{const g=await getPos();$('#s_glat').value=g.lat;$('#s_glng').value=g.lng;i.textContent='Đã lấy (sai số ±'+g.acc+' m). Bấm Lưu cài đặt.'}catch(e){i.textContent='Không lấy được vị trí, hãy cho phép trình duyệt dùng vị trí.'}},backup(){backup()},wipe(){wipe()},demo(){makeDemo()},rmDemo(){removeDemo()},bulkUser(){bulkModal()}
 };
 document.addEventListener('click',e=>{const b=e.target.closest('[data-act]');if(!b)return;const f=ACTS[b.dataset.act];if(f){e.preventDefault();f(b.dataset,b)}});
