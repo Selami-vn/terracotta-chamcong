@@ -327,7 +327,7 @@ async function phoneTaken(p,exceptId){const L=await val('login/'+normPhone(p));r
 const DB={
   async all(s){
     if(s==='users'){const [st,ph]=await Promise.all([val('staff'),val('staffPhoto')]);for(const k in (ph||{}))PH['u:'+k]=ph[k];
-      return mapObj(st).map(u=>({...u,photo:PH['u:'+u.id]||null}))}
+      return mapObj(st).map(u=>({...u,dept:u.dept?normDept(u.dept):u.dept,photo:PH['u:'+u.id]||null}))}
     if(s==='shifts')return mapObj(await val('shifts')).map(x=>fromShift(x.id,x));
     if(s==='requests')return mapObj(await val('requests'));
     return [];
@@ -401,7 +401,7 @@ const DEFAULT_SETTINGS={id:'settings',
   addr1:'Phân khu chức năng số 7.9, Khu Du Lịch Hồ Tuyền Lâm',
   addr2:'Phường Xuân Hương - Đà Lạt, Lâm Đồng',
   title:'BẢNG TÍNH LƯƠNG SINH VIÊN LÀM THÊM GIỜ',
-  roundMin:1, v2:true, geoOn:true, geoMode:'block', geoLat:11.8948927, geoLng:108.4380538, geoRadius:500, capOn:true, shiftSplit:'12:00', cap1:'14:00', cap2:'22:00', defaultRate:35000, defaultDept:'Nhà Hàng', defaultBank:'MBbank', maxShiftHours:14,
+  roundMin:1, v2:true, geoOn:true, geoMode:'block', geoLat:11.8948927, geoLng:108.4380538, geoRadius:500, capOn:true, shiftSplit:'12:00', cap1:'14:00', cap2:'22:00', defaultRate:35000, defaultDept:'Nhà hàng', defaultBank:'MBbank', maxShiftHours:14,
   signers:['Người Lập','Kiểm Tra','Giám sát','Ký duyệt'], signerNames:['','','','']};
 let S={...DEFAULT_SETTINGS};
 let ME=null, TAB='att', TIMER=null;
@@ -1159,6 +1159,14 @@ async function savePerms(){
   const out={};for(const r of PERM_ROLES){const o={};for(const [k,v] of Object.entries(PERM_DRAFT[r]||{}))if(v)o[k]=true;if(Object.keys(o).length)out[r]=o}
   try{await fbDb.ref('perms').set(out);PERMS=out;PERM_DRAFT=clean(out);toast('Đã lưu phân quyền');renderPerms()}catch(x){alert('Không lưu được: '+(x.message||x))}
 }
+/* Bộ phận: chọn từ danh sách cố định. Tài khoản nội bộ có thêm Kế toán, Nhân sự, Văn phòng. */
+const DEPTS_TV=['Nhà hàng','Buồng phòng','Bếp'],DEPTS_NB=['Kế toán','Nhân sự','Văn phòng'];
+const normDept=d=>{const t=String(d||'').trim();return [...DEPTS_TV,...DEPTS_NB].find(x=>x.toLowerCase()===t.toLowerCase())||t};
+function deptOptions(mgr,cur){
+  const list=mgr?[...DEPTS_TV,...DEPTS_NB]:[...DEPTS_TV];const c=normDept(cur);
+  if(c&&!list.includes(c))list.push(c);
+  return (c?'':'<option value="">— Chọn bộ phận —</option>')+list.map(d=>`<option ${d===c?'selected':''}>${esc(d)}</option>`).join('');
+}
 async function editUser(id,asMgr){
   const all0=await DB.all('users');
   const u=id?all0.find(x=>x.id===id):(asMgr?{role:'hr',active:true,dept:'Văn phòng'}:{role:'staff',active:true,dept:S.defaultDept,rate:S.defaultRate,bank:S.defaultBank,type:'TV'});
@@ -1173,7 +1181,7 @@ async function editUser(id,asMgr){
       <div><label>Quyền / vai trò</label><select id="ur" ${roleOpts.length<2?'disabled':''}>${roleOpts.map(([k,l])=>`<option value="${k}" ${u.role===k?'selected':''}>${l}</option>`).join('')}</select></div>
       <div><label>Họ và tên *</label><input id="un" value="${esc(u.name||'')}"></div>
       <div><label>Số điện thoại (dùng để đăng nhập) *</label><input id="uph2" type="tel" inputmode="numeric" maxlength="10" value="${esc(u.phone||'')}" placeholder="VD: 0905123456"></div>
-      <div><label>Bộ phận</label><input id="ud" value="${esc(u.dept||'')}" list="depts"><datalist id="depts"><option>Nhà Hàng</option><option>Buồng phòng</option><option>Lễ tân</option><option>Bếp</option><option>Sự kiện</option><option>Nhân sự</option><option>Kế toán</option></datalist></div>
+      <div><label>Bộ phận</label><select id="ud"></select></div>
       <div class="so"><label>Tiền công / giờ (đ)</label><input id="urt" type="number" min="0" step="1000" value="${+u.rate||0}"></div>
       <div class="so"><label>Loại</label><select id="ut"><option value="TV" ${u.type!=='TT'?'selected':''}>TV – Thời vụ</option><option value="TT" ${u.type==='TT'?'selected':''}>TT – Thực tập</option></select></div>
       <div class="so"><label>Số tài khoản</label><input id="us" value="${esc(u.stk||'')}" inputmode="numeric"></div>
@@ -1184,7 +1192,7 @@ async function editUser(id,asMgr){
     <label style="display:flex;gap:8px;align-items:center;color:var(--ink)"><input type="checkbox" id="ua" style="width:auto" ${u.active!==false?'checked':''}> Đang hoạt động (bỏ chọn để khoá đăng nhập)</label>
     <div class="err" id="uerr"></div>
     <div class="row" style="justify-content:flex-end">${id&&id!==ME.id?'<button class="btn danger" id="udel">Xoá tài khoản</button><div class="sp"></div>':''}<button class="btn ghost" data-x="close">Huỷ</button><button class="btn" id="usave">Lưu</button></div>`);
-  const sync=()=>{const mg=$('#ur',m).value!=='staff';m.querySelectorAll('.so').forEach(e=>e.hidden=mg)};
+  const sync=()=>{const mg=$('#ur',m).value!=='staff';m.querySelectorAll('.so').forEach(e=>e.hidden=mg);const cur=$('#ud',m).value||u.dept||'';$('#ud',m).innerHTML=deptOptions(mg,cur)};
   $('#ur',m).onchange=sync;sync();
   $('#usnap',m).onclick=async()=>{const r=await openCamera({title:'Ảnh gốc hồ sơ',allowUpload:true});if(r){photo=r.img;$('#uph',m).src=photo}};
   if($('#urm',m))$('#urm',m).onclick=()=>{photo=null;$('#uph',m).src=avatar({name:$('#un',m).value})};
@@ -1209,7 +1217,7 @@ async function editUser(id,asMgr){
     if(pw&&pw.length<6)return err.textContent='Mật khẩu ít nhất 6 ký tự.';
     const admins=all.filter(x=>x.role==='admin'&&x.active&&x.id!==id);
     if((role!=='admin'||!active)&&u.role==='admin'&&!admins.length)return err.textContent='Phải còn ít nhất 1 tài khoản Trưởng bộ phận Kế toán đang hoạt động.';
-    const rec=Object.assign({},u,{id:id||uid(),name,username,role,active,photo,dept:v('#ud'),phone});
+    const rec=Object.assign({},u,{id:id||uid(),name,username,role,active,photo,dept:normDept(v('#ud')),phone});
     delete rec.code;
     if(!mgr)Object.assign(rec,{rate:+$('#urt',m).value||0,type:$('#ut',m).value,stk:v('#us'),bank:v('#ub')});
     if(!id)rec.createdAt=new Date().toISOString();
@@ -1242,7 +1250,7 @@ async function tabSet(){
    <div class="card"><div class="sectionT" style="margin-top:0">Quy tắc tính công</div>
     <label>Làm tròn số giờ mỗi ca (xuống)</label><select id="s_rd">${[[1,'Không làm tròn: tính theo phút thực tế (khuyên dùng)'],[15,'15 phút'],[30,'30 phút'],[60,'1 giờ']].map(([v,l])=>`<option value="${v}" ${+S.roundMin===v?'selected':''}>${l}</option>`).join('')}</select>
     <label>Tiền công/giờ mặc định cho nhân sự mới (đ)</label><input id="s_rt" type="number" step="1000" value="${S.defaultRate}">
-    <div class="grid2"><div><label>Bộ phận mặc định</label><input id="s_dp" value="${esc(S.defaultDept)}"></div><div><label>Ngân hàng mặc định</label><input id="s_bk" value="${esc(S.defaultBank)}"></div></div>
+    <div class="grid2"><div><label>Bộ phận mặc định</label><select id="s_dp">${deptOptions(false,S.defaultDept)}</select></div><div><label>Ngân hàng mặc định</label><input id="s_bk" value="${esc(S.defaultBank)}"></div></div>
     <label style="display:flex;gap:8px;align-items:center;color:var(--ink);margin-top:14px"><input type="checkbox" id="s_cap" style="width:auto" ${S.capOn?'checked':''}> <b>Áp dụng giờ chốt ra ca</b> (ra trễ hơn chỉ tính đến giờ chốt)</label>
     <div class="grid2"><div><label>Ca 1: tính công tối đa đến</label><input type="time" id="s_c1" value="${esc(S.cap1)}"></div><div><label>Ca 2: tính công tối đa đến</label><input type="time" id="s_c2" value="${esc(S.cap2)}"></div></div>
     <label>Mốc phân ca: check in trước giờ này là Ca 1, từ giờ này trở đi là Ca 2</label><input type="time" id="s_sp" value="${esc(S.shiftSplit)}">
@@ -1414,7 +1422,7 @@ async function bulkPreview(m){
   const taken=new Set(all.map(u=>u.username)),phones=new Set(all.map(u=>normPhone(u.phone)).filter(Boolean)),out=[];
   for(const r of rows){
     const [name,phone,dept,rate,type,stk,bank,pw]=r;const it={name:(name||'').trim(),err:'',phone:excelPhone(phone)};
-    it.dept=dept||S.defaultDept;it.rate=+String(rate||'').replace(/[^\d]/g,'')||+S.defaultRate;
+    it.dept=normDept(dept||S.defaultDept);it.rate=+String(rate||'').replace(/[^\d]/g,'')||+S.defaultRate;
     it.type=/^tt|thực tập|thuc tap/i.test(type||'')?'TT':'TV';it.stk=(stk||'').replace(/\s/g,'');it.bank=bank||S.defaultBank;
     if(!it.name)it.err='Thiếu họ tên';
     if(it.name){it.username=makeUsername(it.name,taken);if(!it.username)it.err='Họ tên không hợp lệ'}
