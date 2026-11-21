@@ -83,10 +83,6 @@ label{display:block;font-size:13px;color:var(--muted);margin:10px 0 4px}
 .tbl th,.tbl td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:middle}
 .tbl th{font-size:12px;text-transform:uppercase;letter-spacing:.3px;color:var(--muted);background:#fbf7f3}
 .tbl td.r,.tbl th.r{text-align:right}
-.tbl td.c,.tbl th.c{text-align:center}
-.perm td{vertical-align:middle;padding:12px 10px}.perm td.c{width:22%}.perm td:first-child{font-size:15px}.perm input[type=checkbox]{width:20px;height:20px;accent-color:#00AC82;margin:0;cursor:pointer}.perm input:disabled{cursor:default}
-.perm .pall{display:inline-flex;flex-direction:column;gap:4px;align-items:center;margin:0;color:inherit;font-size:12px;cursor:pointer}
-.pown{display:flex;gap:10px;align-items:center;color:var(--ink);font-size:14px;margin:12px 0 0;cursor:pointer}.pown input{width:20px;height:20px;accent-color:#00AC82;margin:0}
 .scroll{overflow:auto;border:1px solid var(--line);border-radius:12px}
 .thumb{width:46px;height:46px;object-fit:cover;border-radius:8px;cursor:zoom-in;vertical-align:middle;margin-right:6px;border:1px solid var(--line)}
 .avatar{width:40px;height:40px;border-radius:50%;object-fit:cover;background:#f1ebe6;border:1px solid var(--line)}
@@ -151,31 +147,6 @@ html{scroll-padding-bottom:110px}
 .bnav button{flex:1;border:0;background:none;padding:8px 4px 10px;font-size:12px;font-weight:600;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer}
 .bnav button .ic{font-size:22px;line-height:1.1;filter:grayscale(1);opacity:.6}
 .bnav button.on{color:var(--brown)}.bnav button.on .ic{filter:none;opacity:1}
-.bnav button{position:relative}.bnav .badge{position:absolute;top:4px;left:calc(50% + 6px);font-size:10px;padding:1px 5px}
-/* Màn quản lý trên điện thoại: thanh dưới, danh sách thẻ thay cho bảng */
-.mnav,.mob-only,.mrole{display:none}
-.mlist{display:flex;flex-direction:column;gap:10px}
-.mcard{background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px}
-.mcard .mh{display:flex;gap:10px;align-items:center}.mcard .mh .sp{flex:1}
-.mcard .mio{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
-.mcard .mio>div{background:#fbf7f3;border-radius:10px;padding:8px}
-.mcard .mio .k{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.3px}
-.mcard .mio .t{font-size:20px;font-weight:700;color:var(--ink)}
-.mcard .mio .thumb{width:40px;height:40px;float:right;margin:0}
-.mcard .mf{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}.mcard .mf .sp{flex:1}
-.mcard .tag{margin-top:4px}
-@media(max-width:700px){
-  .tabbar,.desk-only{display:none!important}
-  .mnav{display:flex}.mob-only{display:block}.mlist.mob-only{display:flex}
-  .mrole{display:block;font-size:12px;color:var(--muted);margin:2px 0 -4px}
-  .wrap.madmin{padding-bottom:calc(92px + env(safe-area-inset-bottom))}
-  .sheetwrap:not(.show){display:none}
-  .filters{gap:8px}.filters>div{flex:1 1 140px}
-  .filters .btn{flex:1 1 auto}
-  .perm td,.perm th{padding:10px 6px}
-  #permCard .prole .btn{flex:1 1 40%}
-  .stats{gap:6px}.stat{padding:8px 10px}
-}
 .scard{background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:8px}
 .sdate{display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:46px;height:46px;border-radius:10px;background:#fbf1ea;color:var(--brown);line-height:1.1}
 .sdate span{font-size:11px;color:var(--muted)}
@@ -251,44 +222,18 @@ const PH={}; // bộ nhớ tạm ảnh: 'u:sid', 's:id:in', 's:id:out'
 const val=async p=>(await fbDb.ref(p).get()).val();
 const mapObj=o=>o?Object.entries(o).map(([id,v])=>({...v,id})):[];
 const ukey=un=>'u-'+String(un).replace(/\./g,','); // Firebase không cho dấu chấm trong khoá
-/* Vai trò: staff = nhân sự thời vụ (chấm công), còn lại là tài khoản quản lý.
-   Khoá 'admin' giữ nguyên trong dữ liệu nhưng nay là Trưởng BP Kế toán (toàn quyền). */
-const ROLES={admin:'Trưởng bộ phận Kế toán (toàn quyền)',acc:'Nhân viên Kế toán',hr_head:'Trưởng bộ phận Nhân sự',hr:'Nhân viên Nhân sự',dept_head:'Trưởng bộ phận (các bộ phận khác)',staff:'Nhân sự thời vụ (chấm công)'};
-const ROLE_SHORT={admin:'Trưởng BP Kế toán',acc:'NV Kế toán',hr_head:'Trưởng BP Nhân sự',hr:'NV Nhân sự',dept_head:'Trưởng BP',acc_head:'Trưởng BP Kế toán',staff:'Thời vụ'};
-const PERM_ROLES=['acc','hr_head','hr','dept_head'];
-/* Phân quyền gọn: 3 đối tượng × Xem / Thêm / Sửa.
-   Sửa chấm công gồm cả duyệt báo sai giờ; Sửa nhân sự gồm cả duyệt yêu cầu sửa thông tin. */
-const PERM_OBJ=[
-  {k:'att',name:'Chấm công',v:1,a:1,e:1},
-  {k:'pay',name:'Bảng lương',v:1,a:0,e:0},
-  {k:'staff',name:'Nhân sự thời vụ',v:1,a:1,e:1},
-];
-const DEFAULT_PERMS={
-  acc:{att_v:true,pay_v:true},
-  hr_head:{att_v:true,pay_v:true,staff_v:true,staff_a:true,staff_e:true},
-  hr:{att_v:true,pay_v:true,staff_v:true},
-  dept_head:{att_v:true,staff_v:true,own:true},
-};
+/* Vai trò: staff = nhân sự thời vụ (chấm công), còn lại là tài khoản quản lý đăng nhập bằng tên đăng nhập */
+const ROLES={admin:'Quản trị (toàn quyền)',hr_head:'Trưởng bộ phận Nhân sự',hr:'Nhân viên Nhân sự',acc_head:'Trưởng bộ phận Kế toán',staff:'Nhân sự thời vụ (chấm công)'};
+const ROLE_SHORT={admin:'Quản trị',hr_head:'Trưởng BP Nhân sự',hr:'NV Nhân sự',acc_head:'Trưởng BP Kế toán',staff:'Thời vụ'};
 const isMgr=u=>!!(u&&u.role&&u.role!=='staff');
 const roleIs=(...r)=>!!(ME&&r.includes(ME.role));
-const isTop=()=>roleIs('admin');
-const can=k=>isTop()||!!(ME&&S.perms&&S.perms[ME.role]&&S.perms[ME.role][k]);
-const ownDept=()=>!isTop()&&can('own')&&!!(ME&&ME.dept);
-const inScope=u=>!ownDept()||!u||u.role!=='staff'||String(u.dept||'').trim().toLowerCase()===String(ME.dept||'').trim().toLowerCase();
 const CAN={
-  viewAtt:()=>can('att_v'),
-  addShift:()=>can('att_a'),
-  editShift:()=>can('att_e'),
-  viewPay:()=>can('pay_v'),
-  viewStaff:()=>can('staff_v')||can('staff_a')||can('staff_e'),
-  addUser:()=>can('staff_a'),
-  users:()=>CAN.viewStaff(),
-  manageRoles:()=>isTop(),
-  settings:()=>isTop(),
-  editUser:u=>isTop()||(!!u&&u.role==='staff'&&can('staff_e')&&inScope(u)),
-  viewReq:r=>r.type==='shift'?(can('att_v')||can('att_e')):CAN.viewStaff(),
-  decide:r=>r.type==='shift'?can('att_e'):can('staff_e'),
-  anyReq:()=>can('att_e')||can('staff_e'),
+  editShift:()=>roleIs('admin','acc_head'),      // sửa giờ, thêm ca thủ công, xoá ca, duyệt báo sai giờ
+  users:()=>roleIs('admin','hr_head'),           // tạo / sửa tài khoản thời vụ, mã nhân viên, duyệt sửa thông tin
+  manageRoles:()=>roleIs('admin'),               // tạo tài khoản quản lý, phân quyền
+  settings:()=>roleIs('admin'),
+  editUser:u=>roleIs('admin')||(roleIs('hr_head')&&(!u||u.role==='staff')),
+  decide:r=>roleIs('admin')||(r.type==='shift'?roleIs('acc_head'):roleIs('hr_head')),
 };
 const loginKeys=u=>{const a=[];if(u&&isMgr(u)&&u.username)a.push(ukey(u.username));if(u&&u.phone)a.push(normPhone(u.phone));return a};
 const emailOf=(sid,v)=>sid.toLowerCase()+'.v'+v+MAIL_DOMAIN;
@@ -383,7 +328,7 @@ const DEFAULT_SETTINGS={id:'settings',
   addr2:'Phường Xuân Hương - Đà Lạt, Lâm Đồng',
   title:'BẢNG TÍNH LƯƠNG SINH VIÊN LÀM THÊM GIỜ',
   roundMin:1, v2:true, geoOn:true, geoMode:'block', geoLat:11.8948927, geoLng:108.4380538, geoRadius:500, capOn:true, shiftSplit:'12:00', cap1:'14:00', cap2:'22:00', defaultRate:35000, defaultDept:'Nhà Hàng', defaultBank:'MBbank', maxShiftHours:14,
-  signers:['Người Lập','Kiểm Tra','Giám sát','Ký duyệt'], signerNames:['','','',''], perms:DEFAULT_PERMS};
+  signers:['Người Lập','Kiểm Tra','Giám sát','Ký duyệt'], signerNames:['','','','']};
 let S={...DEFAULT_SETTINGS};
 let ME=null, TAB='att', TIMER=null;
 let F={from:today(),to:today(),user:''};          // bộ lọc tab Chấm công
@@ -474,12 +419,12 @@ async function loadMe(user){
 function renderSetup(){
   $('#app').innerHTML=`<div class="login"><form class="card" id="setupForm">
     <img src="${LOGO}" alt="Terracotta Hotel & Resort"><h1>Thiết lập lần đầu</h1>
-    <p class="muted sm" style="text-align:center">Tạo tài khoản Trưởng bộ phận Kế toán (toàn quyền) để quản lý chấm công. Chỉ làm một lần.</p>
-    <label>Họ và tên</label><input id="su_n" value="" required>
+    <p class="muted sm" style="text-align:center">Tạo tài khoản quản trị để quản lý chấm công. Chỉ làm một lần.</p>
+    <label>Họ và tên</label><input id="su_n" value="Quản trị viên" required>
     <label>Số điện thoại (dùng để đăng nhập)</label><input id="su_ph" type="tel" inputmode="numeric" maxlength="10" placeholder="VD: 0905123456" required>
     <label>Mật khẩu (ít nhất 6 ký tự)</label><input id="su_p" type="password" autocomplete="new-password" required>
     <label>Nhập lại mật khẩu</label><input id="su_p2" type="password" autocomplete="new-password" required>
-    <div class="err" id="su_e"></div><button class="btn" style="width:100%">Tạo tài khoản</button></form></div>`;
+    <div class="err" id="su_e"></div><button class="btn" style="width:100%">Tạo tài khoản quản trị</button></form></div>`;
   $('#setupForm').onsubmit=async e=>{
     e.preventDefault();const v=x=>$(x).value.trim(),err=$('#su_e'),b=e.target.querySelector('button');
     const name=v('#su_n'),un='admin',phone=normPhone(v('#su_ph')),pw=$('#su_p').value;
@@ -490,9 +435,9 @@ function renderSetup(){
     try{
       const sid=uid(),c=await fbAuth.createUserWithEmailAndPassword(emailOf(sid,1),pw);
       await fbDb.ref().update({['staff/'+sid]:{name,username:un,phone,role:'admin',active:true,dept:'Văn phòng',uid:c.user.uid,authV:1,createdAt:new Date().toISOString()},
-        ['uids/'+c.user.uid]:sid,['login/'+ukey(un)]:{sid,v:1},['login/'+phone]:{sid,v:1},'meta/initialized':true,settings:clean({...S,perms:DEFAULT_PERMS})});
-      await loadMe(c.user);toast('Đã tạo tài khoản');route();
-    }catch(x){b.disabled=false;b.textContent='Tạo tài khoản';err.textContent='Không tạo được: '+(x.message||x)}
+        ['uids/'+c.user.uid]:sid,['login/'+ukey(un)]:{sid,v:1},['login/'+phone]:{sid,v:1},'meta/initialized':true,settings:clean(S)});
+      await loadMe(c.user);toast('Đã tạo tài khoản quản trị');route();
+    }catch(x){b.disabled=false;b.textContent='Tạo tài khoản quản trị';err.textContent='Không tạo được: '+(x.message||x)}
   };
 }
 function route(){
@@ -708,7 +653,7 @@ function staffPay(mine,reqs){
 function staffMe(reqs){
   const row=(k,v)=>`<div class="irow"><span class="muted">${k}</span><b>${v||'<span class="muted">Chưa có</span>'}</b></div>`;
   const pend=reqs.find(r=>r.type==='profile'&&r.status==='pending');
-  return `<div class="card" style="text-align:center"><img class="avatar" style="width:96px;height:96px" src="${avatar(ME)}" alt=""><div class="b" style="font-size:18px;margin-top:8px">${esc(ME.name)}</div><div class="muted">Đăng nhập: ${fmtPhone(ME.phone||'')}</div></div>
+  return `<div class="card" style="text-align:center"><img class="avatar" style="width:96px;height:96px" src="${avatar(ME)}" alt=""><div class="b" style="font-size:18px;margin-top:8px">${esc(ME.name)}</div><div class="muted">${ME.role==='admin'?'@'+esc(ME.username):'Đăng nhập: '+fmtPhone(ME.phone||'')}</div></div>
     <div class="card" style="margin-top:12px;padding:6px 16px">
       ${row('Bộ phận',esc(ME.dept))}${row('Loại',ME.type==='TT'?'Thực tập':'Thời vụ')}${row('Tiền công / giờ',money(ME.rate)+'đ')}
       ${row('Số điện thoại',ME.phone?fmtPhone(ME.phone):'')}${row('Số tài khoản',esc(ME.stk))}${row('Ngân hàng',esc(ME.bank))}
@@ -794,7 +739,7 @@ function installApp(){
 async function tabReq(){
   const [reqs,{U,shifts}]=await Promise.all([DB.all('requests'),loadAll()]);
   const S2=Object.fromEntries(shifts.map(s=>[s.id,s]));
-  const mine=reqs.filter(r=>CAN.viewReq(r)&&inScope(U[r.userId]));reqs.length=0;reqs.push(...mine);
+  const mine=reqs.filter(r=>CAN.decide(r));reqs.length=0;reqs.push(...mine);
   reqs.sort((a,b)=>(a.status==='pending'?0:1)-(b.status==='pending'?0:1)||b.createdAt.localeCompare(a.createdAt));
   const pend=reqs.filter(r=>r.status==='pending');
   const card=r=>{const u=U[r.userId]||{name:'(đã xoá)'};let body='';
@@ -811,16 +756,15 @@ async function tabReq(){
     }
     return `<div class="card" style="margin-bottom:12px"><div class="row"><img class="avatar" src="${avatar(u)}" alt=""><div><b>${esc(u.name)}</b> <span class="muted sm">· ${esc(u.dept||'')}</span><div class="muted sm">${r.type==='shift'?'Báo sai giờ ca '+dmy(r.shiftDate):'Sửa thông tin cá nhân'} · gửi ${hm(r.createdAt)} ${dmy(r.createdAt)}</div></div><div class="sp"></div>${reqTag(r)}</div>
       ${r.note?`<div class="sm" style="margin-top:8px">💬 ${esc(r.note)}</div>`:''}${body}
-      ${r.status==='pending'?(!CAN.decide(r)?'<div class="muted sm" style="margin-top:8px">Bạn chỉ được xem yêu cầu này.</div>':`<div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn danger sm" data-act="reqReject" data-id="${r.id}">Từ chối</button><button class="btn green sm" data-act="reqApprove" data-id="${r.id}">✓ Duyệt</button></div>`)
+      ${r.status==='pending'?`<div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn danger sm" data-act="reqReject" data-id="${r.id}">Từ chối</button><button class="btn green sm" data-act="reqApprove" data-id="${r.id}">✓ Duyệt</button></div>`
         :`<div class="muted sm" style="margin-top:8px">${r.status==='approved'?'Duyệt':'Từ chối'} bởi ${esc(r.decidedBy||'')} lúc ${hm(r.decidedAt)} ${dmy(r.decidedAt)}${r.decisionNote?' · '+esc(r.decisionNote):''}</div>`}</div>`};
-  const dec=[can('att_e')&&'<b>báo sai giờ</b>',can('staff_e')&&'<b>sửa thông tin cá nhân</b>'].filter(Boolean);
-  const scope=isTop()?'':`<p class="muted sm">${dec.length?'Bạn được duyệt yêu cầu '+dec.join(' và ')+'.':'Bạn chỉ được xem các yêu cầu, không duyệt.'}</p>`;
+  const scope=roleIs('admin')?'':roleIs('acc_head')?'<p class="muted sm">Bạn duyệt các yêu cầu <b>điều chỉnh giờ công</b>. Yêu cầu sửa thông tin cá nhân do Trưởng bộ phận Nhân sự duyệt.</p>':'<p class="muted sm">Bạn duyệt các yêu cầu <b>sửa thông tin cá nhân</b>. Yêu cầu điều chỉnh giờ công do Trưởng bộ phận Kế toán duyệt.</p>';
   $('#tabBody').innerHTML=scope+`<div class="sectionT">Chờ duyệt (${pend.length})</div>${pend.length?pend.map(card).join(''):'<p class="muted">Không có yêu cầu nào đang chờ.</p>'}
     ${reqs.length>pend.length?`<div class="sectionT">Đã xử lý</div>${reqs.filter(r=>r.status!=='pending').slice(0,30).map(card).join('')}`:''}`;
 }
 async function decideReq(id,ok){
   const r=await DB.get('requests',id);if(!r||r.status!=='pending')return;
-  if(!CAN.decide(r))return alert('Bạn chưa được phân quyền duyệt loại yêu cầu này. Liên hệ Trưởng bộ phận Kế toán.');
+  if(!CAN.decide(r))return alert(r.type==='shift'?'Chỉ Trưởng bộ phận Kế toán duyệt điều chỉnh giờ công.':'Chỉ Trưởng bộ phận Nhân sự duyệt sửa thông tin.');
   let note='';
   if(!ok){note=prompt('Lý do từ chối (nhân viên sẽ thấy):','');if(note===null)return}
   if(ok&&r.type==='profile'){
@@ -849,23 +793,14 @@ function startLive(){
 }
 async function renderAdmin(){
   stopTimers();startLive();
-  if(isTop()){try{const pr=await val('settings/perms');if(!pr){S.perms=clean(DEFAULT_PERMS);await fbDb.ref('settings/perms').set(S.perms)}else S.perms=pr}catch(e){}}
-  else{try{S.perms=(await val('settings/perms'))||{}}catch(e){}}
-  const canReq=CAN.anyReq();
-  const nReq=canReq?(await DB.all('requests').then(async rs=>{const U=Object.fromEntries((await DB.all('users')).map(u=>[u.id,u]));return rs.filter(r=>r.status==='pending'&&CAN.decide(r)&&inScope(U[r.userId]))})).length:0;
-  const tabs=[CAN.viewAtt()&&['att','📋 Chấm công'],CAN.viewPay()&&['pay','💰 Bảng lương'],canReq&&['req','📝 Yêu cầu'+(nReq?` <span class="badge">${nReq}</span>`:'')],CAN.users()&&['users','👥 Nhân sự'],CAN.settings()&&['set','⚙️ Cài đặt']].filter(Boolean);
-  if(!tabs.length){$('#app').innerHTML=header(ROLES[ME.role]||'Quản lý')+'<main class="wrap"><div class="card" style="margin-top:16px;text-align:center"><div class="b">Tài khoản chưa được phân quyền</div><p class="muted">Liên hệ Trưởng bộ phận Kế toán để được cấp quyền xem.</p></div></main>';return}
-  if(!tabs.some(t=>t[0]===TAB))TAB=tabs[0][0];
-  const MN={att:['📋','Chấm công'],pay:['💰','Lương'],req:['📝','Yêu cầu'],users:['👥','Nhân sự'],set:['⚙️','Cài đặt']};
-  $('#app').innerHTML=header(ROLES[ME.role]||'Quản lý')+`<div class="tabbar"><nav class="tabs">${tabs.map(([k,l])=>`<button class="${TAB===k?'on':''}" data-act="tab" data-tab="${k}">${l}</button>`).join('')}</nav></div>
-    <div class="wrap mob-only" style="padding-bottom:0;padding-top:8px"><div class="mrole">${esc(ROLES[ME.role]||'Quản lý')}</div></div>
-    <main id="tabBody" class="wrap madmin"></main>
-    <nav class="bnav mnav">${tabs.map(([k])=>`<button class="${TAB===k?'on':''}" data-act="tab" data-tab="${k}"><span class="ic">${MN[k][0]}</span>${MN[k][1]}${k==='req'&&nReq?`<span class="badge">${nReq}</span>`:''}</button>`).join('')}</nav>`;
+  const canReq=roleIs('admin','hr_head','acc_head');
+  const nReq=canReq?(await DB.all('requests')).filter(r=>r.status==='pending'&&CAN.decide(r)).length:0;
+  const tabs=[['att','📋 Chấm công'],['pay','💰 Bảng lương'],canReq&&['req','📝 Yêu cầu'+(nReq?` <span class="badge">${nReq}</span>`:'')],CAN.users()&&['users','👥 Nhân sự'],CAN.settings()&&['set','⚙️ Cài đặt']].filter(Boolean);
+  if(!tabs.some(t=>t[0]===TAB))TAB='att';
+  $('#app').innerHTML=header(ROLES[ME.role]||'Quản lý')+`<div class="tabbar"><nav class="tabs">${tabs.map(([k,l])=>`<button class="${TAB===k?'on':''}" data-act="tab" data-tab="${k}">${l}</button>`).join('')}</nav></div><main id="tabBody" class="wrap"></main>`;
   await ({att:tabAtt,pay:tabPay,req:tabReq,users:tabUsers,set:tabSet})[TAB]();
 }
-async function loadAll(){let [users,shifts]=await Promise.all([DB.all('users'),DB.all('shifts')]);
-  if(ownDept()){users=users.filter(inScope);const ok=new Set(users.map(u=>u.id));shifts=shifts.filter(s=>ok.has(s.userId))}
-  return {users,shifts,U:Object.fromEntries(users.map(u=>[u.id,u]))}}
+async function loadAll(){const [users,shifts]=await Promise.all([DB.all('users'),DB.all('shifts')]);return {users,shifts,U:Object.fromEntries(users.map(u=>[u.id,u]))}}
 const staffOptions=(users,sel)=>`<option value="">Tất cả nhân sự</option>`+users.filter(u=>u.role==='staff').sort((a,b)=>a.name.localeCompare(b.name,'vi')).map(u=>`<option value="${u.id}" ${sel===u.id?'selected':''}>${esc(u.name)}</option>`).join('');
 const quickBtns=t=>`<div class="row">${[['today','Hôm nay'],['yday','Hôm qua'],['7d','7 ngày'],['month','Tháng này'],['lmonth','Tháng trước']].map(([k,l])=>`<button class="btn ghost sm" data-act="quick" data-t="${t}" data-k="${k}">${l}</button>`).join('')}</div>`;
 function quickRange(k){
@@ -885,7 +820,7 @@ async function tabAtt(){
   const done=list.filter(s=>s.outAt);
   const tH=done.reduce((a,s)=>a+shiftHours(s),0),tM=done.reduce((a,s)=>a+shiftMoney(s),0);
   const nowMs=Date.now(),maxMs=(+S.maxShiftHours||14)*3600000;
-  const hasDemo=users.some(u=>u.demo)&&isTop(),noStaff=!users.some(u=>u.role==='staff')&&isTop(),pv=CAN.viewPay();
+  const hasDemo=users.some(u=>u.demo)&&roleIs('admin'),noStaff=!users.some(u=>u.role==='staff')&&roleIs('admin');
   $('#tabBody').innerHTML=`
     ${hasDemo?`<div class="hint row" style="margin-top:14px"><span>🧪 Đang có <b>dữ liệu mẫu</b> (nhân sự và ảnh giả) để xem thử. Nhớ xoá trước khi dùng thật.</span><div class="sp"></div><button class="btn danger sm" data-act="rmDemo">Xoá dữ liệu mẫu</button></div>`:''}
     ${noStaff?`<div class="card" style="margin-top:14px;text-align:center;padding:28px"><div style="font-size:34px">👋</div><div class="b" style="font-size:17px;margin:6px 0">Chưa có nhân sự nào</div>
@@ -902,20 +837,12 @@ async function tabAtt(){
       <div><label>Đến ngày</label><input type="date" id="ft" value="${F.to}"></div>
       <div style="min-width:200px"><label>Nhân sự</label><select id="fu">${staffOptions(users,F.user)}</select></div>
       <button class="btn" data-act="attFilter">Xem</button><div class="sp"></div>
-      ${CAN.addShift()?'<button class="btn ghost" data-act="addShift">+ Thêm ca thủ công</button>':''}
+      ${CAN.editShift()?'<button class="btn ghost" data-act="addShift">+ Thêm ca thủ công</button>':''}
     </div>
     <div class="stats"><div class="stat"><div class="k">Số ca</div><div class="v">${list.length}</div></div>
       <div class="stat"><div class="k">Tổng giờ</div><div class="v">${fmtHM(tH*60)}</div></div>
-      ${pv?`<div class="stat"><div class="k">Tổng tiền</div><div class="v">${money(tM)}đ</div></div>`:''}</div>
-    <div class="mlist mob-only">${list.length?list.map(s=>{const u=U[s.userId]||{name:'(đã xoá)'};const late=!s.outAt&&nowMs-new Date(s.inAt)>maxMs;
-      return `<div class="mcard"><div class="mh"><img class="avatar" src="${avatar(u)}" alt=""><div><b>${esc(u.name)}</b><div class="muted sm">${esc(u.dept||'')}</div></div><div class="sp"></div><div style="text-align:right"><b>${dmy(s.inAt)}</b><div class="muted sm">Ca ${shiftInfo(s).ca}</div></div></div>
-        <div class="mio"><div>${s.pin?thumbImg(s,'in'):''}<div class="k">Vào</div><div class="t">${hm(s.inAt)}</div>${s.manual?'':geoTag(s.inGeo)}</div>
-          <div>${s.outAt&&s.pout?thumbImg(s,'out'):''}<div class="k">Ra</div>${s.outAt?`<div class="t">${hm(s.outAt)}${ymd(s.outAt)!==ymd(s.inAt)?' <span class="muted sm">'+dm(s.outAt)+'</span>':''}</div>${s.pout?geoTag(s.outGeo):''}`:`<span class="tag ${late?'warn':'open'}">${late?'Quên check-out?':'Đang làm'}</span>`}</div></div>
-        <div class="mf"><span>⏱ <b>${s.outAt?fmtHM(shiftMinutes(s)):'–'}</b></span>${pv?`<span>💵 <b>${s.outAt?money(shiftMoney(s))+'đ':'–'}</b></span>`:''}
-          ${isCapped(s)?`<span class="tag open">Tính đến ${hm(effOut(s))}</span>`:''}${s.allowOver&&s.outAt?'<span class="tag ok">Duyệt quá giờ</span>':''}${s.editedAt?'<span class="tag edit">Đã sửa</span>':''}${s.manual?'<span class="tag edit">Thủ công</span>':''}
-          <div class="sp"></div><button class="btn ghost sm" data-act="viewShift" data-id="${s.id}">Xem</button>${CAN.editShift()?`<button class="btn ghost sm" data-act="editShift" data-id="${s.id}">Sửa</button><button class="btn danger sm" data-act="delShift" data-id="${s.id}">Xoá</button>`:''}</div></div>`}).join('')
-      :'<p class="muted" style="text-align:center">Không có dữ liệu trong khoảng này.</p>'}</div>
-    <div class="scroll desk-only"><table class="tbl"><thead><tr><th>Nhân sự</th><th>Ngày</th><th>Check in</th><th>Check out</th><th class="r">Số giờ</th>${pv?'<th class="r">Tiền công</th>':''}<th></th></tr></thead><tbody>
+      <div class="stat"><div class="k">Tổng tiền</div><div class="v">${money(tM)}đ</div></div></div>
+    <div class="scroll"><table class="tbl"><thead><tr><th>Nhân sự</th><th>Ngày</th><th>Check in</th><th>Check out</th><th class="r">Số giờ</th><th class="r">Tiền công</th><th></th></tr></thead><tbody>
     ${list.length?list.map(s=>{const u=U[s.userId]||{name:'(đã xoá)'};const late=!s.outAt&&nowMs-new Date(s.inAt)>maxMs;
       return `<tr><td><div class="row" style="flex-wrap:nowrap"><img class="avatar" src="${avatar(u)}" alt=""><div><b>${esc(u.name)}</b><div class="muted sm">${esc(u.dept||'')}</div></div></div></td>
       <td>${dmy(s.inAt)}<div class="muted sm">Ca ${shiftInfo(s).ca}</div></td>
@@ -924,9 +851,9 @@ async function tabAtt(){
         :`<span class="tag ${late?'warn':'open'}">${late?'Quên check-out?':'Đang làm'}</span>`}
         ${isCapped(s)?` <span class="tag open" title="Ra thực tế ${hm(s.outAt)}, chỉ tính công đến giờ chốt ca">Tính đến ${hm(effOut(s))}</span>`:''}${s.allowOver&&s.outAt?' <span class="tag ok">Duyệt quá giờ</span>':''}
         ${s.editedAt?` <span class="tag edit" title="${esc('Sửa bởi '+s.editedBy+' lúc '+dmy(s.editedAt)+' '+hm(s.editedAt)+': '+(s.editNote||''))}">Đã sửa</span>`:''}${s.manual?' <span class="tag edit">Thủ công</span>':''}${s.outAt&&s.pout?'<div>'+geoTag(s.outGeo)+'</div>':''}</td>
-      <td class="r">${s.outAt?fmtHM(shiftMinutes(s)):'–'}</td>${pv?`<td class="r">${s.outAt?money(shiftMoney(s)):'–'}</td>`:''}
+      <td class="r">${s.outAt?fmtHM(shiftMinutes(s)):'–'}</td><td class="r">${s.outAt?money(shiftMoney(s)):'–'}</td>
       <td style="white-space:nowrap"><button class="btn ghost sm" data-act="viewShift" data-id="${s.id}">Xem</button> ${CAN.editShift()?`<button class="btn ghost sm" data-act="editShift" data-id="${s.id}">Sửa</button> <button class="btn danger sm" data-act="delShift" data-id="${s.id}">Xoá</button>`:''}</td></tr>`}).join('')
-      :`<tr><td colspan="${pv?7:6}" class="muted" style="text-align:center;padding:20px">Không có dữ liệu trong khoảng này.</td></tr>`}
+      :'<tr><td colspan="7" class="muted" style="text-align:center;padding:20px">Không có dữ liệu trong khoảng này.</td></tr>'}
     </tbody></table></div>`;
   fillPhotos($('#tabBody'));
 }
@@ -935,14 +862,14 @@ async function viewShift(id){
   const ph=await DB.shiftPhotos(id).catch(()=>({}));s.inPhoto=ph.in;s.outPhoto=ph.out;
   const fig=(src,cap)=>`<figure>${src?`<img src="${src}" alt="">`:'<div class="none">Không có ảnh</div>'}<figcaption>${cap}</figcaption></figure>`;
   modal(`<div class="row"><h3 style="margin:0">${esc(u.name)} · ${dmy(s.inAt)}</h3><div class="sp"></div><button class="btn ghost sm" data-x="close">Đóng</button></div>
-    <p class="muted sm">${esc(u.dept||'')} · @${esc(u.username||'')} · Ca ${shiftInfo(s).ca} · Số giờ: <b>${s.outAt?fmtHM(shiftMinutes(s)):'đang làm'}</b>${isCapped(s)?` <span class="tag open">Ra ${hm(s.outAt)}, tính đến ${hm(effOut(s))}</span>`:''}${CAN.viewPay()?` · Tiền: <b>${s.outAt?money(shiftMoney(s))+'đ':'–'}</b>`:''}</p>
+    <p class="muted sm">${esc(u.dept||'')} · @${esc(u.username||'')} · Ca ${shiftInfo(s).ca} · Số giờ: <b>${s.outAt?fmtHM(shiftMinutes(s)):'đang làm'}</b>${isCapped(s)?` <span class="tag open">Ra ${hm(s.outAt)}, tính đến ${hm(effOut(s))}</span>`:''} · Tiền: <b>${s.outAt?money(shiftMoney(s))+'đ':'–'}</b></p>
     <div class="cmp">${fig(u.photo,'<b>Ảnh gốc hồ sơ</b>')}${fig(s.inPhoto,'<b>Check in</b> '+hms(s.inAt))}${fig(s.outPhoto,s.outAt?'<b>Check out</b> '+hms(s.outAt)+' '+dm(s.outAt):'Chưa check out')}</div>
     ${s.manual?'':`<p class="sm">${geoTag(s.inGeo,'Vào')} ${s.outAt&&s.pout?geoTag(s.outGeo,'Ra'):''} <span class="muted">(bấm để mở bản đồ)</span></p>`}
     ${s.editedAt?`<p class="sm"><span class="tag edit">Đã sửa</span> bởi ${esc(s.editedBy)} lúc ${dmy(s.editedAt)} ${hm(s.editedAt)}. Lý do: ${esc(s.editNote||'')}${s.orig?`<br><span class="muted">Giờ gốc: vào ${hm(s.orig.inAt)} ${dm(s.orig.inAt)} · ra ${s.orig.outAt?hm(s.orig.outAt)+' '+dm(s.orig.outAt):'chưa có'}</span>`:''}</p>`:''}
     ${CAN.editShift()?`<div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn ghost" data-x="close" data-act="editShift" data-id="${s.id}">Sửa giờ</button></div>`:''}`,{wide:true});
 }
 async function editShift(id){
-  if(id?!CAN.editShift():!CAN.addShift())return alert('Bạn chưa được phân quyền điều chỉnh giờ công. Liên hệ Trưởng bộ phận Kế toán.');
+  if(!CAN.editShift())return alert('Chỉ Trưởng bộ phận Kế toán hoặc Quản trị được điều chỉnh giờ công.');
   const {users,U}=await loadAll();
   const s=id?await DB.get('shifts',id):null;
   const staff=users.filter(u=>u.role==='staff'&&u.active);
@@ -1025,9 +952,6 @@ async function tabPay(){
     <div class="stats"><div class="stat"><div class="k">Số người</div><div class="v">${LASTPAY.rows.length}</div></div>
       <div class="stat"><div class="k">Tổng giờ</div><div class="v">${fmtHM(LASTPAY.hours*60)}</div></div>
       <div class="stat"><div class="k">Tổng tiền</div><div class="v">${money(LASTPAY.money)}đ</div></div></div>
-    <div class="mlist mob-only">${LASTPAY.rows.map((r,i)=>`<div class="mcard"><div class="mh"><img class="avatar" src="${avatar(r.u)}" alt=""><div><b>${i+1}. ${esc(r.u.name)}</b><div class="muted sm">${esc(r.u.dept||'')} · ${r.u.type==='TT'?'Thực tập':'Thời vụ'}</div></div><div class="sp"></div><div style="text-align:right"><b>${money(r.money)}đ</b><div class="muted sm">${fmtHM(r.hours*60)}</div></div></div>
-      <div class="muted sm" style="margin-top:8px;white-space:pre-line">${r.det.map(esc).join('\n')}</div>${r.u.stk?`<div class="sm" style="margin-top:6px">🏦 ${esc(r.u.stk)} · ${esc(r.u.bank||'')}</div>`:''}</div>`).join('')||'<p class="muted" style="text-align:center">Chưa có ca nào đã check out trong khoảng này.</p>'}
-      <button class="btn ghost" style="width:100%" onclick="this.parentNode.nextElementSibling.classList.toggle('show');this.textContent=this.parentNode.nextElementSibling.classList.contains('show')?'Ẩn bảng lương đầy đủ':'Xem bảng lương đầy đủ (mẫu in)'">Xem bảng lương đầy đủ (mẫu in)</button></div>
     <div class="sheetwrap">${payrollHTML(LASTPAY)}</div>
     <p class="muted sm">Chỉ tính các ca đã check out, theo ngày check in. ${S.capOn?`Giờ chốt: Ca 1 đến ${esc(S.cap1)}, Ca 2 đến ${esc(S.cap2)} (dấu * là ra trễ, chỉ tính đến giờ chốt).`:''} ${+S.roundMin>1?`Số giờ mỗi ca làm tròn xuống theo ${S.roundMin} phút.`:'Tính theo phút thực tế (14:45 → 17:12 = 2h27).'} Ca đang làm hoặc quên check out không được tính cho đến khi quản lý sửa giờ ra.</p>`;
 }
@@ -1056,67 +980,34 @@ function download(name,content,type){const b=content instanceof Blob?content:new
 async function tabUsers(){
   const {users,shifts}=await loadAll();
   const openIds=new Set(shifts.filter(s=>!s.outAt).map(s=>s.userId));
-  const ord={admin:0,acc:1,hr_head:2,hr:3,dept_head:4,staff:9};
+  const ord={admin:0,hr_head:1,hr:2,acc_head:3,staff:4};
   const list=users.sort((a,b)=>(ord[a.role]??9)-(ord[b.role]??9)||a.name.localeCompare(b.name,'vi'));
   const mgrs=list.filter(isMgr),staff=list.filter(u=>!isMgr(u));
   const row=u=>`<tr>
       <td><div class="row" style="flex-wrap:nowrap"><img class="avatar" src="${avatar(u)}" alt=""><b>${esc(u.name)}</b></div></td>
       <td style="white-space:nowrap">${u.phone?`<b>${fmtPhone(u.phone)}</b>`:(isMgr(u)?`@${esc(u.username)} <span class="tag warn">Chưa có SĐT</span>`:'<span class="tag warn">Thiếu SĐT</span>')}</td>
-      <td>${isMgr(u)?`<span class="tag edit">${ROLE_SHORT[u.role]||u.role}</span>${u.role==='dept_head'&&u.dept?' <span class="muted sm">'+esc(u.dept)+'</span>':''}`:esc(u.dept||'')}</td>
+      <td>${isMgr(u)?`<span class="tag edit">${ROLE_SHORT[u.role]}</span>`:esc(u.dept||'')}</td>
       <td>${isMgr(u)?'–':u.type==='TT'?'Thực tập':'Thời vụ'}</td><td class="r">${isMgr(u)?'–':money(u.rate)}</td>
       <td>${[u.stk,u.bank].filter(Boolean).map(esc).join(' · ')}</td>
       <td>${!u.active?'<span class="tag off">Đã khoá</span>':openIds.has(u.id)?'<span class="tag open">Đang trong ca</span>':'<span class="tag ok">Hoạt động</span>'}${u.photo||isMgr(u)?'':' <span class="tag warn">Thiếu ảnh gốc</span>'}</td>
-      <td style="white-space:nowrap">${CAN.editUser(u)?`<button class="btn ghost sm" data-act="editUser" data-id="${u.id}">Sửa</button>`:''} ${isMgr(u)||!CAN.viewAtt()?'':`<button class="btn ghost sm" data-act="userHist" data-id="${u.id}">Chấm công</button>`}</td></tr>`;
-  const card=u=>`<div class="mcard"><div class="mh"><img class="avatar" src="${avatar(u)}" alt=""><div><b>${esc(u.name)}</b><div class="sm">${u.phone?'📱 '+fmtPhone(u.phone):'<span class="tag warn">Thiếu SĐT</span>'}</div></div><div class="sp"></div>
-      ${!u.active?'<span class="tag off">Đã khoá</span>':openIds.has(u.id)?'<span class="tag open">Trong ca</span>':'<span class="tag ok">Hoạt động</span>'}</div>
-    <div class="mf">${isMgr(u)?`<span class="tag edit">${ROLE_SHORT[u.role]||u.role}</span>${u.dept?'<span class="muted sm">'+esc(u.dept)+'</span>':''}`:`<span>${esc(u.dept||'')}</span><span class="muted sm">· ${u.type==='TT'?'Thực tập':'Thời vụ'} · ${money(u.rate)}đ/giờ</span>`}${u.photo||isMgr(u)?'':'<span class="tag warn">Thiếu ảnh gốc</span>'}</div>
-    ${u.stk&&!isMgr(u)?`<div class="muted sm" style="margin-top:4px">🏦 ${esc(u.stk)} · ${esc(u.bank||'')}</div>`:''}
-    <div class="mf"><div class="sp"></div>${isMgr(u)||!CAN.viewAtt()?'':`<button class="btn ghost sm" data-act="userHist" data-id="${u.id}">Chấm công</button>`}${CAN.editUser(u)?`<button class="btn ghost sm" data-act="editUser" data-id="${u.id}">Sửa</button>`:''}</div></div>`;
+      <td style="white-space:nowrap">${CAN.editUser(u)?`<button class="btn ghost sm" data-act="editUser" data-id="${u.id}">Sửa</button>`:''} ${isMgr(u)?'':`<button class="btn ghost sm" data-act="userHist" data-id="${u.id}">Chấm công</button>`}</td></tr>`;
   const head='<thead><tr><th>Họ tên</th><th>SĐT đăng nhập</th><th>Bộ phận / Vai trò</th><th>Loại</th><th class="r">Tiền công/giờ</th><th>STK · Ngân hàng</th><th>Trạng thái</th><th></th></tr></thead>';
   $('#tabBody').innerHTML=`
-    <div class="row" style="margin:14px 0"><div class="sectionT" style="margin:0">Nhân sự thời vụ (${staff.length})</div><div class="sp"></div>${CAN.addUser()?'<button class="btn ghost" data-act="bulkUser">⇪ Thêm hàng loạt</button><button class="btn" data-act="addUser">+ Thêm nhân sự</button>':''}</div>
-    <div class="mlist mob-only">${staff.map(card).join('')||'<p class="muted" style="text-align:center">Chưa có nhân sự thời vụ.</p>'}</div>
-    <div class="scroll desk-only"><table class="tbl">${head}<tbody>${staff.map(row).join('')||'<tr><td colspan="8" class="muted" style="text-align:center;padding:16px">Chưa có nhân sự thời vụ.</td></tr>'}</tbody></table></div>
+    <div class="row" style="margin:14px 0"><div class="sectionT" style="margin:0">Nhân sự thời vụ (${staff.length})</div><div class="sp"></div><button class="btn ghost" data-act="bulkUser">⇪ Thêm hàng loạt</button><button class="btn" data-act="addUser">+ Thêm nhân sự</button></div>
+    <div class="scroll"><table class="tbl">${head}<tbody>${staff.map(row).join('')||'<tr><td colspan="8" class="muted" style="text-align:center;padding:16px">Chưa có nhân sự thời vụ.</td></tr>'}</tbody></table></div>
     <div class="row" style="margin:18px 0 10px"><div class="sectionT" style="margin:0">Tài khoản quản lý (${mgrs.length})</div><div class="sp"></div>${CAN.manageRoles()?'<button class="btn ghost" data-act="addMgr">+ Thêm tài khoản quản lý</button>':''}</div>
-    <div class="mlist mob-only">${mgrs.map(card).join('')}</div>
-    <div class="scroll desk-only"><table class="tbl">${head}<tbody>${mgrs.map(row).join('')}</tbody></table></div>
-    <div class="card" style="margin-top:14px" id="permCard"></div>
+    <div class="scroll"><table class="tbl">${head}<tbody>${mgrs.map(row).join('')}</tbody></table></div>
+    <div class="card" style="margin-top:14px"><div class="b" style="margin-bottom:6px">Phân quyền</div>
+      <table class="tbl sm"><thead><tr><th>Việc</th><th>Quản trị</th><th>Trưởng BP Nhân sự</th><th>NV Nhân sự</th><th>Trưởng BP Kế toán</th></tr></thead><tbody>
+      ${[['Xem chấm công, ảnh, vị trí','✓','✓','✓','✓'],['Xem, in, xuất bảng lương','✓','✓','✓','✓'],['Tạo / sửa nhân sự thời vụ, cấp lại mật khẩu','✓','✓','',''],['Duyệt yêu cầu sửa thông tin cá nhân','✓','✓','',''],['Điều chỉnh giờ công (sửa, thêm, xoá ca)','✓','','','✓'],['Duyệt yêu cầu báo sai giờ','✓','','','✓'],['Tạo tài khoản quản lý, phân quyền, cài đặt','✓','','','']].map(r=>`<tr><td>${r[0]}</td>${r.slice(1).map(c=>`<td style="text-align:center;color:#008a68;font-weight:700">${c}</td>`).join('')}</tr>`).join('')}
+      </tbody></table></div>
     <p class="muted sm">Mật khẩu được mã hoá một chiều nên không ai xem lại được. Nhân viên quên mật khẩu thì bấm <b>Sửa → Tạo mật khẩu mới</b> rồi báo lại cho họ. Ảnh gốc hồ sơ dùng để đối chiếu khuôn mặt với ảnh check in/out.</p>`;
-  renderPerms();
-}
-/* ---- Phân quyền theo vị trí: Xem / Thêm / Sửa (chỉ Trưởng BP Kế toán được tick) ---- */
-let PERM_SEL='acc',PERM_DRAFT=null;
-function renderPerms(){
-  const box=$('#permCard');if(!box)return;
-  const top=isTop(),r=top?PERM_SEL:ME.role;
-  if(!PERM_DRAFT||!top)PERM_DRAFT=clean(S.perms||{});
-  const P0=PERM_DRAFT[r]||{},on=k=>!!P0[k];
-  const cols=[['v','Xem'],['a','Thêm'],['e','Sửa']];
-  const colAll=c=>PERM_OBJ.filter(o=>o[c]).every(o=>on(o.k+'_'+c));
-  const cb=k=>`<input type="checkbox" class="pchk" data-k="${k}" ${on(k)?'checked':''} ${top?'':'disabled'}>`;
-  box.innerHTML=`<div class="row"><div class="b">Phân quyền</div><div class="sp"></div><span class="muted sm">${top?'Trưởng BP Kế toán luôn có toàn quyền':'Do Trưởng BP Kế toán cấp'}</span></div>
-    ${top?`<div class="row prole" style="margin:10px 0">${PERM_ROLES.map(k=>`<button class="btn ${k===r?'':'ghost'} sm" data-act="permRole" data-r="${k}">${ROLE_SHORT[k]}</button>`).join('')}</div>`:`<p class="sm" style="margin:8px 0">Vị trí: <b>${ROLES[r]||r}</b></p>`}
-    <table class="tbl perm"><thead><tr><th>Đối tượng</th>${cols.map(([c,l])=>`<th class="c">${top?`<label class="pall"><input type="checkbox" class="pcol" data-c="${c}" ${colAll(c)?'checked':''}>${l}</label>`:l}</th>`).join('')}</tr></thead><tbody>
-    ${PERM_OBJ.map(o=>`<tr><td><b>${o.name}</b></td>${cols.map(([c])=>`<td class="c">${o[c]?cb(o.k+'_'+c):''}</td>`).join('')}</tr>`).join('')}
-    </tbody></table>
-    <label class="pown">${cb('own')} Chỉ thấy nhân sự thuộc bộ phận của mình</label>
-    <p class="muted sm" style="margin:6px 0 0">Sửa chấm công gồm sửa giờ, xoá ca và duyệt báo sai giờ. Sửa nhân sự gồm sửa thông tin, cấp lại mật khẩu và duyệt yêu cầu sửa thông tin.</p>
-    ${top?'<div class="row" style="justify-content:flex-end;margin-top:10px"><span class="muted sm" id="permMsg"></span><button class="btn" data-act="permSave">Lưu phân quyền</button></div>':''}`;
-  if(!top)return;
-  const set=(k,v)=>{PERM_DRAFT[r]=PERM_DRAFT[r]||{};if(v)PERM_DRAFT[r][k]=true;else delete PERM_DRAFT[r][k];$('#permMsg').textContent='Chưa lưu'};
-  box.querySelectorAll('.pchk').forEach(e=>e.onchange=()=>{set(e.dataset.k,e.checked);box.querySelectorAll('.pcol').forEach(h=>h.checked=colAll(h.dataset.c))});
-  box.querySelectorAll('.pcol').forEach(h=>h.onchange=()=>{PERM_OBJ.filter(o=>o[h.dataset.c]).forEach(o=>set(o.k+'_'+h.dataset.c,h.checked));const m=$('#permMsg').textContent;renderPerms();$('#permMsg').textContent=m});
-}
-async function savePerms(){
-  if(!isTop())return;
-  const out={};for(const r of PERM_ROLES){const o={};for(const [k,v] of Object.entries(PERM_DRAFT[r]||{}))if(v)o[k]=true;if(Object.keys(o).length)out[r]=o}
-  try{await fbDb.ref('settings/perms').set(out);S.perms=out;PERM_DRAFT=clean(out);toast('Đã lưu phân quyền');renderPerms()}catch(x){alert('Không lưu được: '+(x.message||x))}
 }
 async function editUser(id,asMgr){
   const all0=await DB.all('users');
   const u=id?all0.find(x=>x.id===id):(asMgr?{role:'hr',active:true,dept:'Văn phòng'}:{role:'staff',active:true,dept:S.defaultDept,rate:S.defaultRate,bank:S.defaultBank,type:'TV'});
   if(!u)return;
-  if(id?!CAN.editUser(u):!(asMgr?CAN.manageRoles():CAN.addUser()))return alert('Bạn không có quyền '+(id?'sửa':'thêm')+' tài khoản này.');
+  if(!CAN.editUser(u))return alert('Bạn không có quyền sửa tài khoản này.');
   let photo=u.photo||null;
   const roleOpts=CAN.manageRoles()?Object.entries(ROLES):[['staff',ROLES.staff]];
   const m=modal(`<h3>${id?'Sửa tài khoản':isMgr(u)?'Thêm tài khoản quản lý':'Thêm nhân sự thời vụ'}</h3>
@@ -1161,7 +1052,7 @@ async function editUser(id,asMgr){
     if(!id&&!pw)return err.textContent='Nhập mật khẩu cho tài khoản mới.';
     if(pw&&pw.length<6)return err.textContent='Mật khẩu ít nhất 6 ký tự.';
     const admins=all.filter(x=>x.role==='admin'&&x.active&&x.id!==id);
-    if((role!=='admin'||!active)&&u.role==='admin'&&!admins.length)return err.textContent='Phải còn ít nhất 1 tài khoản Trưởng bộ phận Kế toán đang hoạt động.';
+    if((role!=='admin'||!active)&&u.role==='admin'&&!admins.length)return err.textContent='Phải còn ít nhất 1 tài khoản admin đang hoạt động.';
     const rec=Object.assign({},u,{id:id||uid(),name,username,role,active,photo,dept:v('#ud'),phone});
     delete rec.code;
     if(!mgr)Object.assign(rec,{rate:+$('#urt',m).value||0,type:$('#ut',m).value,stk:v('#us'),bank:v('#ub')});
@@ -1292,13 +1183,13 @@ async function makeDemo(){
       if(!farOne&&un==='anh.pn'&&!isFixed&&oa){farOne=true;s.inGeo={lat:11.940419,lng:108.458313,acc:25}} // 1 ca chấm ở trung tâm Đà Lạt (ngoài khu)
       if(!editedOne&&un==='khoa.tm'&&!isFixed&&oa&&d<addDays(T,-3)){ // 1 ca quên check out, quản lý sửa giờ
         editedOne=true;s.orig={inAt:s.inAt,outAt:null};s.outPhoto=null;oa=new Date(d+'T22:00');s.outAt=oa.toISOString();
-        s.editedBy='Trưởng BP Kế toán';s.editedAt=new Date(oa.getTime()+36e5*11).toISOString();s.editNote='Quên check-out, quản lý ca xác nhận ra lúc 22:00';
+        s.editedBy='Quản trị viên';s.editedAt=new Date(oa.getTime()+36e5*11).toISOString();s.editNote='Quên check-out, quản lý ca xác nhận ra lúc 22:00';
       }
       if(!manualOne&&un==='bao.hg'&&!isFixed&&oa&&d<addDays(T,-5)){ // 1 ca nhập tay (điện thoại hỏng)
-        manualOne=true;s.inPhoto=null;s.outPhoto=null;s.manual=true;s.editedBy='Trưởng BP Kế toán';s.editedAt=oa.toISOString();s.editNote='Điện thoại hỏng camera, bếp trưởng xác nhận giờ làm';
+        manualOne=true;s.inPhoto=null;s.outPhoto=null;s.manual=true;s.editedBy='Quản trị viên';s.editedAt=oa.toISOString();s.editNote='Điện thoại hỏng camera, bếp trưởng xác nhận giờ làm';
       }
       if(!overOne&&un==='tai.vd'&&!isFixed&&oa&&d<addDays(T,-6)){ // 1 ca được duyệt tính quá giờ chốt
-        overOne=true;s.allowOver=true;s.editedBy='Trưởng BP Kế toán';s.editedAt=new Date(oa.getTime()+36e5*10).toISOString();s.editNote='Tiệc cưới kéo dài, quản lý sự kiện duyệt tính công đến giờ ra thực tế';
+        overOne=true;s.allowOver=true;s.editedBy='Quản trị viên';s.editedAt=new Date(oa.getTime()+36e5*10).toISOString();s.editNote='Tiệc cưới kéo dài, quản lý sự kiện duyệt tính công đến giờ ra thực tế';
       }
       await DB.put('shifts',s);
     }
@@ -1386,7 +1277,7 @@ async function bulkPreview(m){
   const b=$('#bgo',m);b.disabled=!ok;b.textContent=`Tạo ${ok} tài khoản`;
 }
 function bulkModal(){
-  if(!CAN.addUser())return;
+  if(!CAN.users())return;
   const m=modal(`<div class="row"><h3 style="margin:0">Thêm nhân sự hàng loạt</h3><div class="sp"></div><button class="btn ghost sm" data-x="close">Đóng</button></div>
     <p class="muted sm">Cách 1: mở file Excel, bôi đen các dòng nhân sự rồi <b>dán vào ô dưới</b>. Cách 2: <b>tải file</b> Excel/CSV lên. Thứ tự cột:<br>
     <b>${BULK_COLS.join(' | ')}</b><br>Bắt buộc <b>Họ và tên</b>, nên có <b>Số điện thoại</b> vì nhân viên đăng nhập bằng SĐT. Bỏ trống mật khẩu thì app tự tạo 6 số ngẫu nhiên.</p>
@@ -1468,7 +1359,7 @@ const ACTS={
   payPrint(){printPayroll()},payXlsx(){exportXlsx()},
   addUser(){editUser(null)},addMgr(){editUser(null,true)},editUser(d){editUser(d.id)},
   userHist(d){F={from:quickRange('month')[0],to:today(),user:d.id};TAB='att';renderAdmin()},
-  saveSet(){saveSettings()},permRole(d){PERM_SEL=d.r;renderPerms()},permSave(){savePerms()},
+  saveSet(){saveSettings()},
   async geoHere(){const i=$('#s_ginfo');i.textContent='Đang lấy vị trí…';try{const g=await getPos();$('#s_glat').value=g.lat;$('#s_glng').value=g.lng;i.textContent='Đã lấy (sai số ±'+g.acc+' m). Bấm Lưu cài đặt.'}catch(e){i.textContent='Không lấy được vị trí, hãy cho phép trình duyệt dùng vị trí.'}},backup(){backup()},wipe(){wipe()},demo(){makeDemo()},rmDemo(){removeDemo()},bulkUser(){bulkModal()}
 };
 document.addEventListener('click',e=>{const b=e.target.closest('[data-act]');if(!b)return;const f=ACTS[b.dataset.act];if(f){e.preventDefault();f(b.dataset,b)}});
