@@ -109,6 +109,11 @@ label{display:block;font-size:13px;color:var(--muted);margin:10px 0 4px}
 .chips{display:flex;gap:8px;flex-wrap:wrap}
 .chip{display:flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--line);border-radius:99px;padding:4px 12px 4px 4px;cursor:pointer}
 .chip img{width:30px;height:30px;border-radius:50%;object-fit:cover}
+.odepts{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.odept{display:flex;flex-direction:column;align-items:flex-start;gap:2px;background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px 14px;cursor:pointer;text-align:left;font:inherit;color:inherit}
+.odept .k{font-size:13px;color:var(--muted)}.odept .n{font-size:28px;font-weight:700;color:var(--brown);line-height:1.1}
+.odept.on{border-color:var(--brown);box-shadow:0 0 0 2px #a14c2422}.odept.zero{cursor:default;opacity:.6}.odept.zero .n{color:var(--muted)}
+.odet{margin-top:10px}.odet[hidden]{display:none}
 
 /* modal */
 .mback{position:fixed;inset:0;background:#2b1d1699;display:grid;place-items:center;padding:14px;z-index:50}
@@ -918,9 +923,13 @@ async function tabAtt(){
       <p class="muted">Tạo dữ liệu mẫu để xem app hoạt động thế nào, hoặc thêm nhân sự thật.</p>
       <div class="row" style="justify-content:center"><button class="btn orange" data-act="demo">✨ Tạo dữ liệu mẫu để xem thử</button><button class="btn ghost" data-act="bulkUser">⇪ Thêm nhân sự hàng loạt</button><button class="btn ghost" data-act="addUser">+ Thêm 1 nhân sự</button></div></div>`:''}
     <div class="sectionT">Đang trong ca (${open.length})</div>
-    <div class="chips">${open.length?open.map(s=>{const u=U[s.userId]||{};const late=nowMs-new Date(s.inAt)>maxMs;
-      return `<div class="chip" data-act="viewShift" data-id="${s.id}"><img src="${PH['s:'+s.id+':in']||avatar(u)}" data-ph="${s.pin?s.id+'|in':''}" alt=""><span><b>${esc(u.name)}</b> <span class="muted sm">vào ${hm(s.inAt)} ${dm(s.inAt)}</span> ${late?'<span class="tag warn">Quên check-out?</span>':''}</span></div>`}).join('')
-      :'<span class="muted">Không có ai đang trong ca.</span>'}</div>
+    ${(()=>{const by={};for(const s of open){const d=normDept((U[s.userId]||{}).dept)||'Khác';(by[d]=by[d]||[]).push(s)}
+      const ds=ownDept()?[normDept(ME.dept)]:[...DEPTS_TV,...Object.keys(by).filter(d=>!DEPTS_TV.includes(d))];
+      const chip=s=>{const u=U[s.userId]||{};const late=nowMs-new Date(s.inAt)>maxMs;
+        return `<div class="chip" data-act="viewShift" data-id="${s.id}"><img src="${PH['s:'+s.id+':in']||avatar(u)}" data-ph="${s.pin?s.id+'|in':''}" alt=""><span><b>${esc(u.name)}</b> <span class="muted sm">vào ${hm(s.inAt)} ${dm(s.inAt)}</span> ${late?'<span class="tag warn">Quên check-out?</span>':''}</span></div>`};
+      return `<div class="odepts">${ds.map(d=>{const L=by[d]||[],nl=L.filter(s=>nowMs-new Date(s.inAt)>maxMs).length;
+          return `<button class="odept${L.length?'':' zero'}" ${L.length?`onclick="const e=this.parentNode.parentNode.querySelector('.odet[data-d=\\'${esc(d)}\\']');const on=e.hidden;this.parentNode.parentNode.querySelectorAll('.odet').forEach(x=>x.hidden=true);this.parentNode.querySelectorAll('.odept').forEach(x=>x.classList.remove('on'));e.hidden=!on;this.classList.toggle('on',on)"`:'disabled'}><span class="k">${esc(d)}</span><span class="n">${L.length}</span>${nl?`<span class="tag warn">${nl} quên check-out?</span>`:''}</button>`}).join('')}</div>
+        ${ds.map(d=>by[d]&&by[d].length?`<div class="odet chips" data-d="${esc(d)}" hidden>${by[d].map(chip).join('')}</div>`:'').join('')}`})()}
     <div class="sectionT">Lịch sử chấm công</div>
     ${quickBtns('F')}
     <div class="filters" style="margin-top:10px">
