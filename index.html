@@ -123,7 +123,7 @@ label{display:block;font-size:13px;color:var(--muted);margin:10px 0 4px}
 .cam .cclock{position:absolute;left:0;right:0;bottom:0;padding:8px 10px;background:#0008;color:#fff;font-size:13px}
 .cmp{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
 .cmp figure{margin:0}
-.cmp img,.cmp .none{width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:12px;background:#f1ebe6;border:1px solid var(--line)}
+.cmp img,.cmp .none{width:100%;aspect-ratio:3/4;object-fit:contain;border-radius:12px;background:#f1ebe6;border:1px solid var(--line)}
 .cmp .none{display:grid;place-items:center;color:var(--muted);font-size:13px}
 .cmp figcaption{font-size:13px;text-align:center;margin-top:4px}
 @media(max-width:640px){.cmp{grid-template-columns:1fr 1fr}}
@@ -601,7 +601,7 @@ function modal(html,{wide=false,lock=false}={}){
 
 /* ---------- Camera: chụp ảnh, đóng dấu giờ + tên lên ảnh ---------- */
 function stampImage(src,sw,sh,label,name,at){
-  const W=480,H=Math.round(Math.min(sh*W/sw,640));
+  const W=480,H=640; // luôn ảnh đứng 3:4, khớp khung xem ảnh nên không bị cắt chữ
   const c=document.createElement('canvas');c.width=W;c.height=H;const x=c.getContext('2d');
   // cắt giữa cho vừa khung
   const scale=Math.max(W/sw,H/sh),dw=sw*scale,dh=sh*scale;
@@ -609,7 +609,7 @@ function stampImage(src,sw,sh,label,name,at){
   if(label){
     x.fillStyle='rgba(0,0,0,.55)';x.fillRect(0,H-50,W,50);
     x.fillStyle=label.includes('IN')?'#00AC82':(label.includes('OUT')?'#F05F22':'#A14C24');x.fillRect(0,H-50,6,50);
-    x.fillStyle='#fff';x.font='bold 17px system-ui,sans-serif';x.fillText(label+' • '+name,14,H-28);
+    x.fillStyle='#fff';let fs=17;const t1=label+' • '+name;do{x.font='bold '+fs+'px system-ui,sans-serif'}while(x.measureText(t1).width>W-26&&--fs>10);x.fillText(t1,14,H-28);
     x.font='15px system-ui,sans-serif';x.fillText(dmy(at)+'  '+hms(at),14,H-9);
   }
   return c.toDataURL('image/jpeg',0.72);
