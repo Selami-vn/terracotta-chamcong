@@ -87,7 +87,8 @@ label{display:block;font-size:13px;color:var(--muted);margin:10px 0 4px}
 .perm{min-width:640px}.perm td{vertical-align:middle;padding:9px 10px}.perm td.c,.perm th.c{width:13%;text-align:center}
 .perm input[type=checkbox]{width:20px;height:20px;accent-color:#00AC82;margin:0;cursor:pointer}.perm input:disabled{cursor:default}
 .perm tr.pg td{background:#fbf7f3;font-weight:700;color:var(--brown);font-size:13px;padding:7px 10px}
-.perm .pok{color:#008a68;font-weight:700;font-size:16px}.perm th .ls{display:none}
+.perm .pok,.mperm .pok{color:#008a68;font-weight:700;font-size:16px}
+.mperm{margin-top:6px}.mperm .mpg{font-weight:700;color:var(--brown);font-size:13px;margin:10px 0 4px}.mperm .mpi{padding:5px 0;border-bottom:1px solid var(--line)}.perm th .ls{display:none}
 .pown{display:flex;gap:10px;align-items:center;color:var(--ink);font-size:14px;margin:12px 0 0;cursor:pointer}.pown input{width:20px;height:20px;accent-color:#00AC82;margin:0}
 .scroll{overflow:auto;border:1px solid var(--line);border-radius:12px}
 .thumb{width:46px;height:46px;object-fit:cover;border-radius:8px;cursor:zoom-in;vertical-align:middle;margin-right:6px;border:1px solid var(--line)}
@@ -285,7 +286,8 @@ const DEFAULT_PERMS={
 const isMgr=u=>!!(u&&u.role&&u.role!=='staff');
 const roleIs=(...r)=>!!(ME&&r.includes(ME.role));
 const isTop=()=>roleIs('admin');
-const can=k=>isTop()||!!(ME&&S.perms&&S.perms[ME.role]&&S.perms[ME.role][k]);
+let PERMS={};/* quyền theo vị trí, lưu riêng ở /perms: mỗi người chỉ đọc được quyền vị trí mình */
+const can=k=>isTop()||!!(ME&&PERMS[ME.role]&&PERMS[ME.role][k]);
 const ownDept=()=>!isTop()&&can('own')&&!!(ME&&ME.dept);
 const inScope=u=>!ownDept()||!u||u.role!=='staff'||String(u.dept||'').trim().toLowerCase()===String(ME.dept||'').trim().toLowerCase();
 const CAN={
@@ -396,7 +398,7 @@ const DEFAULT_SETTINGS={id:'settings',
   addr2:'Phường Xuân Hương - Đà Lạt, Lâm Đồng',
   title:'BẢNG TÍNH LƯƠNG SINH VIÊN LÀM THÊM GIỜ',
   roundMin:1, v2:true, geoOn:true, geoMode:'block', geoLat:11.8948927, geoLng:108.4380538, geoRadius:500, capOn:true, shiftSplit:'12:00', cap1:'14:00', cap2:'22:00', defaultRate:35000, defaultDept:'Nhà Hàng', defaultBank:'MBbank', maxShiftHours:14,
-  signers:['Người Lập','Kiểm Tra','Giám sát','Ký duyệt'], signerNames:['','','',''], perms:DEFAULT_PERMS};
+  signers:['Người Lập','Kiểm Tra','Giám sát','Ký duyệt'], signerNames:['','','','']};
 let S={...DEFAULT_SETTINGS};
 let ME=null, TAB='att', TIMER=null;
 let F={from:today(),to:today(),user:''};          // bộ lọc tab Chấm công
@@ -473,6 +475,7 @@ async function init(){
   firebase.initializeApp(FB_CONFIG);fbAuth=firebase.auth();fbDb=firebase.database();
   $('#app').innerHTML='<div class="login"><div class="card" style="text-align:center"><img src="'+LOGO+'" alt="" style="max-width:220px"><p class="muted">Đang tải…</p></div></div>';
   try{S=Object.assign({},DEFAULT_SETTINGS,(await val('settings'))||{})}catch(e){}
+  const LEGACY_PERMS=S.perms;delete S.perms;window.__LEGACY_PERMS=LEGACY_PERMS;
   if(!(await val('meta/initialized').catch(()=>null))){renderSetup();return}
   const user=await new Promise(r=>{const un=fbAuth.onAuthStateChanged(u=>{un();r(u)})});
   await loadMe(user);route();
@@ -503,7 +506,7 @@ function renderSetup(){
     try{
       const sid=uid(),c=await fbAuth.createUserWithEmailAndPassword(emailOf(sid,1),pw);
       await fbDb.ref().update({['staff/'+sid]:{name,username:un,phone,role:'admin',active:true,dept:'Văn phòng',uid:c.user.uid,authV:1,createdAt:new Date().toISOString()},
-        ['uids/'+c.user.uid]:sid,['login/'+ukey(un)]:{sid,v:1},['login/'+phone]:{sid,v:1},'meta/initialized':true,settings:clean({...S,perms:DEFAULT_PERMS})});
+        ['uids/'+c.user.uid]:sid,['login/'+ukey(un)]:{sid,v:1},['login/'+phone]:{sid,v:1},'meta/initialized':true,settings:clean(S),perms:clean(DEFAULT_PERMS)});
       await loadMe(c.user);toast('Đã tạo tài khoản');route();
     }catch(x){b.disabled=false;b.textContent='Tạo tài khoản';err.textContent='Không tạo được: '+(x.message||x)}
   };
@@ -862,8 +865,14 @@ function startLive(){
 }
 async function renderAdmin(){
   stopTimers();startLive();
-  if(isTop()){try{const pr=await val('settings/perms');if(!pr){S.perms=clean(DEFAULT_PERMS);await fbDb.ref('settings/perms').set(S.perms)}else S.perms=pr}catch(e){}}
-  else{try{S.perms=(await val('settings/perms'))||{}}catch(e){}}
+  if(isTop()){try{let pr=await val('perms');
+      if(!pr){/* chuyển từ settings/perms (bản trước) sang /perms; bản ghi sẵn buổi sáng thì dùng mặc định mới */
+        const lg=window.__LEGACY_PERMS,morning='{"acc":{"att_v":true,"pay_v":true},"dept_head":{"att_v":true,"own":true,"staff_v":true},"hr":{"att_v":true,"pay_v":true,"staff_v":true},"hr_head":{"att_v":true,"pay_v":true,"staff_a":true,"staff_e":true,"staff_v":true}}';
+        const sortJ=o=>JSON.stringify(o,(k,v)=>v&&typeof v==='object'&&!Array.isArray(v)?Object.fromEntries(Object.keys(v).sort().map(x=>[x,v[x]])):v);
+        pr=clean(lg&&sortJ(lg)!==morning?lg:DEFAULT_PERMS);await fbDb.ref('perms').set(pr)}
+      if(window.__LEGACY_PERMS){await fbDb.ref('settings/perms').remove();window.__LEGACY_PERMS=null}
+      PERMS=pr}catch(e){}}
+  else{try{PERMS={[ME.role]:(await val('perms/'+ME.role))||{}}}catch(e){PERMS={}}}
   const canReq=CAN.anyReq();
   const nReq=canReq?(await DB.all('requests').then(async rs=>{const U=Object.fromEntries((await DB.all('users')).map(u=>[u.id,u]));return rs.filter(r=>r.status==='pending'&&CAN.decide(r)&&inScope(U[r.userId]))})).length:0;
   const tabs=[CAN.viewAtt()&&['att','📋 Chấm công'],CAN.viewPay()&&['pay','💰 Bảng lương'],canReq&&['req','📝 Yêu cầu'+(nReq?` <span class="badge">${nReq}</span>`:'')],CAN.users()&&['users','👥 Nhân sự'],CAN.settings()&&['set','⚙️ Cài đặt']].filter(Boolean);
@@ -1103,7 +1112,8 @@ const PERM_HEAD={admin:['Trưởng BP Kế toán','TrBP KT'],acc:['NV Kế toán
 function renderPerms(){
   const box=$('#permCard');if(!box)return;
   const top=isTop();
-  if(!PERM_DRAFT||!top)PERM_DRAFT=clean(S.perms||{});
+  if(!top)return renderMyPerms(box);
+  if(!PERM_DRAFT)PERM_DRAFT=clean(PERMS||{});
   const on=(r,k)=>!!(PERM_DRAFT[r]&&PERM_DRAFT[r][k]);
   const hd=r=>`<th class="c${r==='admin'?' ptop':''}"><span class="lf">${PERM_HEAD[r][0]}</span><span class="ls">${PERM_HEAD[r][1]}</span></th>`;
   const cell=(row,r)=>row.lock?'<span class="muted">–</span>':`<input type="checkbox" class="pchk" data-r="${r}" data-k="${row.k}" ${on(r,row.k)?'checked':''} ${top?'':'disabled'} aria-label="${esc(PERM_HEAD[r][0]+': '+row.t)}">`;
@@ -1117,10 +1127,22 @@ function renderPerms(){
   if(!top)return;
   box.querySelectorAll('.pchk').forEach(e=>e.onchange=()=>{const r=e.dataset.r,k=e.dataset.k;PERM_DRAFT[r]=PERM_DRAFT[r]||{};if(e.checked)PERM_DRAFT[r][k]=true;else delete PERM_DRAFT[r][k];$('#permMsg').textContent='Chưa lưu'});
 }
+function renderMyPerms(box){
+  const mine=PERMS[ME.role]||{};let html='',grp=null,any=false;
+  for(const row of PERM_ROWS){
+    if(row.g){grp=row.g;continue}
+    if(row.lock||!mine[row.k])continue;
+    if(grp){html+=`<div class="mpg">${grp}</div>`;grp=null}
+    html+=`<div class="mpi"><span class="pok">✓</span> ${row.t}</div>`;any=true;
+  }
+  box.innerHTML=`<div class="row"><div class="b">Quyền của bạn</div><div class="sp"></div><span class="muted sm">${esc(ROLES[ME.role]||ME.role)}</span></div>
+    <div class="mperm">${any?html:'<p class="muted">Chưa được cấp quyền nào.</p>'}</div>
+    <p class="muted sm" style="margin:8px 0 0">Cần thêm quyền, liên hệ Trưởng bộ phận Kế toán.</p>`;
+}
 async function savePerms(){
   if(!isTop())return;
   const out={};for(const r of PERM_ROLES){const o={};for(const [k,v] of Object.entries(PERM_DRAFT[r]||{}))if(v)o[k]=true;if(Object.keys(o).length)out[r]=o}
-  try{await fbDb.ref('settings/perms').set(out);S.perms=out;PERM_DRAFT=clean(out);toast('Đã lưu phân quyền');renderPerms()}catch(x){alert('Không lưu được: '+(x.message||x))}
+  try{await fbDb.ref('perms').set(out);PERMS=out;PERM_DRAFT=clean(out);toast('Đã lưu phân quyền');renderPerms()}catch(x){alert('Không lưu được: '+(x.message||x))}
 }
 async function editUser(id,asMgr){
   const all0=await DB.all('users');
